@@ -1,0 +1,68 @@
+workflows:
+  ios-release:
+    name: Letychka Development IPA for Sideloadly
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    integrations:
+      app_store_connect: AppStoreConnect
+    environment:
+      vars:
+        XCODE_PROJECT: "Letychka.xcodeproj"
+        XCODE_SCHEME: "Letychka"
+        BUNDLE_ID: "recode.letychka32"
+      xcode: latest
+    scripts:
+      - name: Initialize keychain
+        script: |
+          keychain initialize
+      - name: Install XcodeGen and generate project
+        script: |
+          brew install xcodegen
+          xcodegen generate
+      - name: Generate private key for development certificate
+        script: |
+          openssl genrsa -out /tmp/dev_key.pem 2048
+      - name: Revoke any existing iOS Development certificates
+        script: |
+          set +e
+          app-store-connect certificates list --type IOS_DEVELOPMENT --json > /tmp/dev_certs.json 2>/dev/null
+          if [ -s /tmp/dev_certs.json ]; then
+            python3 -c "
+          import json, subprocess, sys
+          try:
+              data = json.load(open('/tmp/dev_certs.json'))
+          except Exception as e:
+              print(f'no parse: {e}'); sys.exit(0)
+          for c in data:
+              cid = c.get('id') if isinstance(c, dict) else None
+              if cid:
+                  print(f'Deleting {cid}')
+                  subprocess.run(['app-store-connect', 'certificates', 'delete', cid, '--ignore-not-found'])
+          "
+          fi
+          exit 0
+      - name: Fetch signing files (creates cert + profile)
+        script: |
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_DEVELOPMENT \
+            --certificate-key=@file:/tmp/dev_key.pem \
+            --create
+      - name: Add certificates to keychain
+        script: |
+          keychain add-certificates
+      - name: Apply provisioning profiles to Xcode project
+        script: |
+          xcode-project use-profiles
+      - name: Build IPA for development
+        script: |
+          xcode-project build-ipa \
+            --project "$XCODE_PROJECT" \
+            --scheme "$XCODE_SCHEME"
+      - name: Rename IPA artifact
+        script: |
+          cd $CM_BUILD_DIR/build/ios/ipa
+          ls -la
+          mv *.ipa Letychka-dev.ipa
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
