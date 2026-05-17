@@ -10,6 +10,7 @@ struct RadarView: View {
 
     @State private var sweep = 0.0
     @State private var pulse = false
+    @State private var hue = 0.0
 
     private func radius(for rssi: Int) -> CGFloat {
         let clamped = max(-95, min(-30, rssi == 0 ? -60 : rssi))
@@ -32,39 +33,42 @@ struct RadarView: View {
                         .frame(width: side * CGFloat(i) / 4,
                                height: side * CGFloat(i) / 4)
                 }
-                // Cross hairs
-                Group {
-                    Rectangle().frame(width: side, height: 0.6)
-                    Rectangle().frame(width: 0.6, height: side)
-                }
-                .foregroundStyle(Theme.line(scheme))
-
                 // Outward ping pulse
                 Circle()
-                    .stroke(Theme.accent.opacity(0.45), lineWidth: 1.5)
+                    .stroke(Theme.accent.opacity(0.40), lineWidth: 1.5)
                     .frame(width: side, height: side)
                     .scaleEffect(pulse ? 1.0 : 0.06)
-                    .opacity(pulse ? 0.0 : 0.7)
+                    .opacity(pulse ? 0.0 : 0.6)
 
-                // Rotating sweep: bright leading edge fading into a trail wedge
+                // Soft fog trail behind the sweep: blurred, colour-shifting
                 Circle()
                     .fill(AngularGradient(
                         gradient: Gradient(stops: [
-                            .init(color: Theme.accent.opacity(0.0),  location: 0.00),
-                            .init(color: Theme.accent.opacity(0.0),  location: 0.55),
-                            .init(color: Theme.accent.opacity(0.12), location: 0.80),
-                            .init(color: Theme.accent.opacity(0.30), location: 0.94),
-                            .init(color: Theme.accent.opacity(0.65), location: 1.00)
+                            .init(color: .clear, location: 0.00),
+                            .init(color: .clear, location: 0.60),
+                            .init(color: Color(red: 0.55, green: 0.36, blue: 1.0).opacity(0.14), location: 0.84),
+                            .init(color: Color(red: 0.55, green: 0.36, blue: 1.0).opacity(0.40), location: 1.00)
                         ]),
                         center: .center))
                     .frame(width: side, height: side)
+                    .blur(radius: 20)
                     .rotationEffect(.radians(sweep))
+                    .clipShape(Circle())
+                    .hueRotation(.degrees(hue))
+
+                // RGB-shimmering sweep line
                 Path { p in
                     p.move(to: c)
                     p.addLine(to: CGPoint(x: c.x, y: c.y - side / 2))
                 }
-                .stroke(Theme.accent, lineWidth: 2)
+                .stroke(
+                    LinearGradient(colors: [.red, .orange, .yellow, .green,
+                                            .cyan, .blue, .purple],
+                                   startPoint: .bottom, endPoint: .top),
+                    style: StrokeStyle(lineWidth: 3, lineCap: .round))
                 .rotationEffect(.radians(sweep), anchor: .center)
+                .hueRotation(.degrees(hue))
+                .shadow(color: .white.opacity(0.35), radius: 4)
 
                 // Center
                 Circle().fill(Theme.accent)
@@ -106,6 +110,9 @@ struct RadarView: View {
             }
             withAnimation(.easeOut(duration: 2.6).repeatForever(autoreverses: false)) {
                 pulse = true
+            }
+            withAnimation(.linear(duration: 5).repeatForever(autoreverses: false)) {
+                hue = 360
             }
         }
     }

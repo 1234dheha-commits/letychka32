@@ -40,9 +40,6 @@ struct RootView: View {
 
     private var header: some View {
         HStack {
-            Text("Letychka")
-                .font(.system(size: 20, weight: .bold))
-                .foregroundStyle(Theme.text(scheme))
             Spacer()
             Button { showSettings = true } label: {
                 Image(systemName: "slider.horizontal.3")
