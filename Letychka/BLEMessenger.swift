@@ -19,6 +19,11 @@ final class BLEMessenger: NSObject, ObservableObject {
     @Published var messages: [ChatMessage] = []
     @Published var status: BTStatus = .unknown
     @Published var nick: String = UserDefaults.standard.string(forKey: "nick") ?? "Anon"
+    /// Pinned conversations (peer ids). Session-scoped like everything else.
+    @Published var pinned: Set<String> = []
+    /// Last known nickname per peer id, so the chat list keeps a name even
+    /// after that person walks out of Bluetooth range.
+    @Published var names: [String: String] = [:]
 
     var poweredOn: Bool { status == .on }
 
@@ -49,6 +54,51 @@ final class BLEMessenger: NSObject, ObservableObject {
 
     func messages(with peerID: String) -> [ChatMessage] {
         messages.filter { $0.peerID == peerID }
+    }
+
+    /// One row per peer that has any message: newest first, pinned on top.
+    struct Convo: Identifiable {
+        let id: String
+        let nick: String
+        let last: ChatMessage
+        let online: Bool
+    }
+
+    func conversations() -> [Convo] {
+        let groups = Dictionary(grouping: messages, by: { $0.peerID })
+        let online = Set(peers.map { $0.id })
+        let list = groups.compactMap { (pid, msgs) -> Convo? in
+            guard let last = msgs.max(by: { $0.date < $1.date }) else { return nil }
+            let nm = names[pid] ?? peers.first(where: { $0.id == pid })?.nick ?? "Anon"
+            return Convo(id: pid, nick: nm, last: last,
+                         online: online.contains(pid))
+        }
+        return list.sorted {
+            let pa = pinned.contains($0.id), pb = pinned.contains($1.id)
+            if pa != pb { return pa }
+            return $0.last.date > $1.last.date
+        }
+    }
+
+    func togglePin(_ peerID: String) {
+        if pinned.contains(peerID) { pinned.remove(peerID) }
+        else { pinned.insert(peerID) }
+    }
+
+    func deleteConversation(_ peerID: String) {
+        messages.removeAll { $0.peerID == peerID }
+        pinned.remove(peerID)
+        names[peerID] = nil
+    }
+
+    /// Wipe everything kept on this device: chats, names, pins, and reset the
+    /// nickname. There are no accounts or servers, so this IS the full
+    /// "delete my data". The avatar file is cleared by the caller.
+    func clearAll() {
+        messages.removeAll()
+        pinned.removeAll()
+        names.removeAll()
+        setNick("")
     }
 
     // MARK: Sending
@@ -85,6 +135,7 @@ final class BLEMessenger: NSObject, ObservableObject {
 
     private func upsertPeer(id: String, nick: String, rssi: Int) {
         DispatchQueue.main.async {
+            if !nick.isEmpty { self.names[id] = nick }
             if let i = self.peers.firstIndex(where: { $0.id == id }) {
                 self.peers[i].rssi = rssi
                 self.peers[i].lastSeen = Date()

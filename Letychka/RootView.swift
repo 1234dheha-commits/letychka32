@@ -12,6 +12,8 @@ struct RootView: View {
     @State private var avatar: UIImage?
     @State private var avatarItem: PhotosPickerItem?
     @State private var bypassBT = false
+    @State private var tab = 0
+    @State private var showClearConfirm = false
 
     var body: some View {
         NavigationStack {
@@ -20,10 +22,22 @@ struct RootView: View {
                 VStack(spacing: 0) {
                     header
                     if ble.status == .on || bypassBT {
-                        statusLine
-                        RadarView(ble: ble) { chatPeer = $0 }
-                            .padding(20)
-                        footer
+                        Picker("", selection: $tab) {
+                            Text("Radar").tag(0)
+                            Text("Chats").tag(1)
+                        }
+                        .pickerStyle(.segmented)
+                        .padding(.horizontal, 20)
+                        .padding(.top, 10)
+
+                        if tab == 0 {
+                            statusLine
+                            RadarView(ble: ble) { chatPeer = $0 }
+                                .padding(20)
+                            footer
+                        } else {
+                            ChatsListView(ble: ble) { chatPeer = $0 }
+                        }
                     } else {
                         btRequiredView
                     }
@@ -195,6 +209,16 @@ struct RootView: View {
                     }
                     .pickerStyle(.segmented)
                 }
+                Section("Privacy") {
+                    Text("Letychka has no account and no sign in. There is nothing to log out of: nothing about you is stored or sent anywhere. Your name and avatar stay only on this phone, and chats disappear when you close the app.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.muted(scheme))
+                    Button(role: .destructive) {
+                        showClearConfirm = true
+                    } label: {
+                        Text("Clear everything on this phone")
+                    }
+                }
                 Section {
                     Text("Letychka finds people near you over Bluetooth and lets you message them directly, with no internet and no servers. Everything is anonymous and disappears when you close the app.")
                         .font(.system(size: 13))
@@ -203,6 +227,18 @@ struct RootView: View {
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
+            .alert("Clear everything?", isPresented: $showClearConfirm) {
+                Button("Cancel", role: .cancel) {}
+                Button("Clear", role: .destructive) {
+                    ble.clearAll()
+                    AvatarStore.clear()
+                    avatar = nil
+                    avatarItem = nil
+                    nickField = "Anon"
+                }
+            } message: {
+                Text("Removes your name, avatar and all chats from this phone. This cannot be undone.")
+            }
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { ble.setNick(nickField); showSettings = false }
