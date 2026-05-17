@@ -14,6 +14,14 @@ struct ChatsListView: View {
         return f
     }()
 
+    private func preview(_ m: ChatMessage) -> String {
+        switch m.kind {
+        case .text:  return m.text
+        case .image: return "Photo"
+        case .audio: return "Voice message"
+        }
+    }
+
     private func peer(for c: BLEMessenger.Convo) -> Peer {
         ble.peers.first(where: { $0.id == c.id })
             ?? Peer(id: c.id, nick: c.nick, rssi: 0, lastSeen: c.last.date)
@@ -93,7 +101,7 @@ struct ChatsListView: View {
                         .font(.system(size: 12))
                         .foregroundStyle(Theme.muted(scheme))
                 }
-                Text((c.last.mine ? "You: " : "") + c.last.text)
+                Text((c.last.mine ? "You: " : "") + preview(c.last))
                     .font(.system(size: 14))
                     .foregroundStyle(Theme.muted(scheme))
                     .lineLimit(1)

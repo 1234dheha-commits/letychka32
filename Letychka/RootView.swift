@@ -57,6 +57,9 @@ struct RootView: View {
         .onAppear {
             nickField = ble.nick
             avatar = AvatarStore.load()
+            if UserDefaults.standard.object(forKey: "firstLaunch") == nil {
+                UserDefaults.standard.set(Date(), forKey: "firstLaunch")
+            }
             ble.start()
         }
         .onChange(of: avatarItem) { _, item in
@@ -107,6 +110,14 @@ struct RootView: View {
             .foregroundStyle(Theme.muted(scheme))
             .multilineTextAlignment(.center)
             .padding(.horizontal, 32).padding(.bottom, 16)
+    }
+
+    private var joinedText: String {
+        let d = (UserDefaults.standard.object(forKey: "firstLaunch") as? Date) ?? Date()
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .none
+        return "On Letychka since \(f.string(from: d))"
     }
 
     private var btIcon: String {
@@ -248,6 +259,9 @@ struct RootView: View {
                 Section("Your name") {
                     TextField("Anon", text: $nickField)
                         .onSubmit { ble.setNick(nickField) }
+                    Text(joinedText)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.muted(scheme))
                 }
                 Section("Avatar") {
                     HStack(spacing: 14) {
