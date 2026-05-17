@@ -8,8 +8,10 @@ import Combine
 /// via a single write+notify characteristic. Small text payloads only.
 final class BLEMessenger: NSObject, ObservableObject {
 
-    static let serviceUUID = CBUUID(string: "4C455459-4348-4B41-3332-4C45545943")
-    static let charUUID    = CBUUID(string: "4C455459-4348-4B41-3332-4D53474348")
+    // Valid 128-bit UUIDs: 8-4-4-4-12 hex (32 digits total). A malformed
+    // string makes CBUUID throw and crashes the app on Bluetooth start.
+    static let serviceUUID = CBUUID(string: "4C455459-3332-4D53-4731-000000000001")
+    static let charUUID    = CBUUID(string: "4C455459-3332-4D53-4731-000000000002")
 
     @Published var peers: [Peer] = []
     @Published var messages: [ChatMessage] = []
