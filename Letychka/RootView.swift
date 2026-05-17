@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import PhotosUI
 
 struct RootView: View {
     @StateObject private var ble = BLEMessenger()
@@ -8,6 +9,8 @@ struct RootView: View {
     @State private var nickField = ""
     @State private var chatPeer: Peer?
     @State private var showSettings = false
+    @State private var avatar: UIImage?
+    @State private var avatarItem: PhotosPickerItem?
 
     var body: some View {
         NavigationStack {
@@ -31,15 +34,34 @@ struct RootView: View {
             .sheet(isPresented: $showSettings) { settingsSheet }
         }
         .tint(Theme.accent)
-        .preferredColorScheme(AppTheme.scheme(for: themeMode))
         .onAppear {
             nickField = ble.nick
+            avatar = AvatarStore.load()
             ble.start()
+        }
+        .onChange(of: avatarItem) { _, item in
+            guard let item else { return }
+            Task {
+                if let data = try? await item.loadTransferable(type: Data.self),
+                   let ui = UIImage(data: data) {
+                    AvatarStore.save(ui)
+                    avatar = ui
+                }
+            }
         }
     }
 
     private var header: some View {
         HStack {
+            if let a = avatar {
+                Button { showSettings = true } label: {
+                    Image(uiImage: a).resizable().scaledToFill()
+                        .frame(width: 34, height: 34)
+                        .clipShape(Circle())
+                        .overlay(Circle().stroke(Theme.line(scheme), lineWidth: 0.5))
+                }
+                .buttonStyle(.plain)
+            }
             Spacer()
             Button { showSettings = true } label: {
                 Image(systemName: "slider.horizontal.3")
@@ -128,6 +150,36 @@ struct RootView: View {
                 Section("Your name") {
                     TextField("Anon", text: $nickField)
                         .onSubmit { ble.setNick(nickField) }
+                }
+                Section("Avatar") {
+                    HStack(spacing: 14) {
+                        if let a = avatar {
+                            Image(uiImage: a).resizable().scaledToFill()
+                                .frame(width: 56, height: 56)
+                                .clipShape(Circle())
+                        } else {
+                            Image(systemName: "person.crop.circle.fill")
+                                .font(.system(size: 52))
+                                .foregroundStyle(Theme.muted(scheme))
+                        }
+                        VStack(alignment: .leading, spacing: 8) {
+                            PhotosPicker(selection: $avatarItem, matching: .images) {
+                                Text(avatar == nil ? "Choose photo" : "Replace photo")
+                            }
+                            if avatar != nil {
+                                Button(role: .destructive) {
+                                    AvatarStore.clear()
+                                    avatar = nil
+                                    avatarItem = nil
+                                } label: {
+                                    Text("Remove photo")
+                                }
+                            }
+                        }
+                    }
+                    Text("Your avatar is local only. It is not sent to people nearby; Bluetooth carries just short text.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.muted(scheme))
                 }
                 Section("Appearance") {
                     Picker("Theme", selection: $themeMode) {
