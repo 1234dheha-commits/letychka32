@@ -66,3 +66,81 @@ workflows:
     artifacts:
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
+
+  ios-appstore:
+    name: Letychka TestFlight / App Store
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    integrations:
+      app_store_connect: AppStoreConnect
+    environment:
+      vars:
+        XCODE_PROJECT: "Letychka.xcodeproj"
+        XCODE_SCHEME: "Letychka"
+        BUNDLE_ID: "recode.letychka32"
+      xcode: latest
+    scripts:
+      - name: Initialize keychain
+        script: |
+          keychain initialize
+      - name: Install XcodeGen and generate project
+        script: |
+          brew install xcodegen
+          xcodegen generate
+      - name: Generate private key for distribution certificate
+        script: |
+          openssl genrsa -out /tmp/dist_key.pem 2048
+      - name: Revoke any existing Distribution certificates
+        script: |
+          set +e
+          for ctype in IOS_DISTRIBUTION DISTRIBUTION; do
+            echo "=== $ctype ==="
+            app-store-connect certificates list --type $ctype --json > /tmp/certs_$ctype.json 2>/dev/null
+            if [ -s /tmp/certs_$ctype.json ]; then
+              python3 -c "
+          import json, subprocess, sys
+          try:
+              data = json.load(open('/tmp/certs_$ctype.json'))
+          except Exception as e:
+              print(f'no parse: {e}'); sys.exit(0)
+          for c in data:
+              cid = c.get('id') if isinstance(c, dict) else None
+              if cid:
+                  print(f'Deleting {cid}')
+                  subprocess.run(['app-store-connect', 'certificates', 'delete', cid, '--ignore-not-found'])
+          "
+            fi
+          done
+          exit 0
+      - name: Fetch App Store signing files
+        script: |
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --certificate-key=@file:/tmp/dist_key.pem \
+            --create
+      - name: Add certificates to keychain
+        script: |
+          keychain add-certificates
+      - name: Apply provisioning profiles
+        script: |
+          xcode-project use-profiles
+      - name: Build IPA for App Store
+        script: |
+          # Apple requires a unique CFBundleVersion per upload.
+          # Unix timestamp guarantees a monotonically increasing build number.
+          BUILD_NUM=$(date +%s)
+          echo "Using CURRENT_PROJECT_VERSION=$BUILD_NUM"
+          xcode-project build-ipa \
+            --project "$XCODE_PROJECT" \
+            --scheme "$XCODE_SCHEME" \
+            --archive-flags="-destination generic/platform=iOS CURRENT_PROJECT_VERSION=$BUILD_NUM"
+      - name: Upload IPA to App Store Connect
+        script: |
+          # Upload only — TestFlight build appears after Apple processing.
+          # No auto beta-review submission here.
+          app-store-connect publish \
+            --path "$CM_BUILD_DIR/build/ios/ipa/*.ipa" \
+            --max-build-processing-wait 20
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
