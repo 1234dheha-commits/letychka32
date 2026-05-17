@@ -56,24 +56,6 @@ struct RadarView: View {
                     .clipShape(Circle())
                     .hueRotation(.degrees(hue))
 
-                // RGB-shimmering sweep line
-                Path { p in
-                    p.move(to: c)
-                    p.addLine(to: CGPoint(x: c.x, y: c.y - side / 2))
-                }
-                .stroke(
-                    LinearGradient(colors: [.red, .orange, .yellow, .green,
-                                            .cyan, .blue, .purple],
-                                   startPoint: .bottom, endPoint: .top),
-                    style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                .rotationEffect(.radians(sweep), anchor: .center)
-                .hueRotation(.degrees(hue))
-                .shadow(color: .white.opacity(0.35), radius: 4)
-
-                // Center
-                Circle().fill(Theme.accent)
-                    .frame(width: 12, height: 12)
-                    .shadow(color: Theme.accent.opacity(0.8), radius: 8)
 
                 // Peers
                 ForEach(ble.peers) { peer in
