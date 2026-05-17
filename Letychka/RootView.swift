@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct RootView: View {
     @StateObject private var ble = BLEMessenger()
@@ -14,10 +15,14 @@ struct RootView: View {
                 Theme.bg(scheme).ignoresSafeArea()
                 VStack(spacing: 0) {
                     header
-                    statusLine
-                    RadarView(ble: ble) { chatPeer = $0 }
-                        .padding(20)
-                    footer
+                    if ble.status == .on {
+                        statusLine
+                        RadarView(ble: ble) { chatPeer = $0 }
+                            .padding(20)
+                        footer
+                    } else {
+                        btRequiredView
+                    }
                 }
             }
             .navigationDestination(item: $chatPeer) { p in
@@ -63,6 +68,61 @@ struct RootView: View {
             .foregroundStyle(Theme.muted(scheme))
             .multilineTextAlignment(.center)
             .padding(.horizontal, 32).padding(.bottom, 16)
+    }
+
+    private var btIcon: String {
+        ble.status == .unsupported
+            ? "antenna.radiowaves.left.and.right.slash"
+            : "dot.radiowaves.left.and.right"
+    }
+    private var btTitle: String {
+        switch ble.status {
+        case .off:          return "Bluetooth is off"
+        case .unauthorized: return "Bluetooth access needed"
+        case .unsupported:  return "Bluetooth unavailable"
+        default:            return "Starting Bluetooth"
+        }
+    }
+    private var btMessage: String {
+        switch ble.status {
+        case .off:
+            return "Letychka works only over Bluetooth. Turn Bluetooth on to find people near you. No internet is used."
+        case .unauthorized:
+            return "Letychka needs Bluetooth permission to find people near you. Enable it in Settings."
+        case .unsupported:
+            return "This device does not support Bluetooth LE, so Letychka cannot run here."
+        default:
+            return "Checking Bluetooth."
+        }
+    }
+
+    private var btRequiredView: some View {
+        VStack(spacing: 16) {
+            Spacer()
+            Image(systemName: btIcon)
+                .font(.system(size: 58, weight: .light))
+                .foregroundStyle(Theme.accent)
+            Text(btTitle)
+                .font(.system(size: 21, weight: .bold))
+                .foregroundStyle(Theme.text(scheme))
+            Text(btMessage)
+                .font(.system(size: 14))
+                .foregroundStyle(Theme.muted(scheme))
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 36)
+            if ble.status == .off || ble.status == .unauthorized {
+                Button("Open Settings") {
+                    if let u = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(u)
+                    }
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                .padding(.horizontal, 56).padding(.top, 6)
+            }
+            Spacer()
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var settingsSheet: some View {

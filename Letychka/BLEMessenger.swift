@@ -13,10 +13,14 @@ final class BLEMessenger: NSObject, ObservableObject {
     static let serviceUUID = CBUUID(string: "4C455459-3332-4D53-4731-000000000001")
     static let charUUID    = CBUUID(string: "4C455459-3332-4D53-4731-000000000002")
 
+    enum BTStatus { case unknown, off, unauthorized, unsupported, on }
+
     @Published var peers: [Peer] = []
     @Published var messages: [ChatMessage] = []
-    @Published var poweredOn = false
+    @Published var status: BTStatus = .unknown
     @Published var nick: String = UserDefaults.standard.string(forKey: "nick") ?? "Anon"
+
+    var poweredOn: Bool { status == .on }
 
     private var central: CBCentralManager!
     private var peripheral: CBPeripheralManager!
@@ -109,12 +113,18 @@ final class BLEMessenger: NSObject, ObservableObject {
 
 extension BLEMessenger: CBCentralManagerDelegate {
     func centralManagerDidUpdateState(_ m: CBCentralManager) {
+        let s: BTStatus
+        switch m.state {
+        case .poweredOn:     s = .on
+        case .poweredOff:    s = .off
+        case .unauthorized:  s = .unauthorized
+        case .unsupported:   s = .unsupported
+        default:             s = .unknown
+        }
+        DispatchQueue.main.async { self.status = s }
         if m.state == .poweredOn {
-            DispatchQueue.main.async { self.poweredOn = true }
             m.scanForPeripherals(withServices: [Self.serviceUUID],
                                  options: [CBCentralManagerScanOptionAllowDuplicatesKey: true])
-        } else {
-            DispatchQueue.main.async { self.poweredOn = false }
         }
     }
 
