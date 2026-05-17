@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 import PhotosUI
+import AuthenticationServices
 
 struct RootView: View {
     @StateObject private var ble = BLEMessenger()
@@ -14,6 +15,10 @@ struct RootView: View {
     @State private var bypassBT = false
     @State private var tab = 0
     @State private var showClearConfirm = false
+    @AppStorage("appleUserID") private var appleUserID = ""
+    @AppStorage("appleUserName") private var appleUserName = ""
+    @State private var signInError: String?
+    @State private var showDeleteAccountConfirm = false
 
     var body: some View {
         NavigationStack {
@@ -168,6 +173,78 @@ struct RootView: View {
     private var settingsSheet: some View {
         NavigationStack {
             Form {
+                Section("Account") {
+                    if !appleUserID.isEmpty {
+                        HStack(spacing: 12) {
+                            Image(systemName: "checkmark.seal.fill")
+                                .foregroundStyle(Theme.accent)
+                                .font(.system(size: 20))
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(appleUserName.isEmpty
+                                     ? "Signed in with Apple"
+                                     : "Signed in as \(appleUserName)")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(Theme.text(scheme))
+                                Text("Optional. Nothing is stored on a server.")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(Theme.muted(scheme))
+                            }
+                            Spacer()
+                        }
+                        Button(role: .destructive) {
+                            appleUserID = ""
+                            appleUserName = ""
+                        } label: {
+                            Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
+                        }
+                        Button(role: .destructive) {
+                            showDeleteAccountConfirm = true
+                        } label: {
+                            Label("Delete account", systemImage: "trash.fill")
+                        }
+                        .confirmationDialog(
+                            "Delete account and all local data? This removes your Apple sign-in, your name, avatar and chats from this phone. It cannot be undone.",
+                            isPresented: $showDeleteAccountConfirm,
+                            titleVisibility: .visible
+                        ) {
+                            Button("Delete", role: .destructive) {
+                                appleUserID = ""
+                                appleUserName = ""
+                                ble.clearAll()
+                                AvatarStore.clear()
+                                avatar = nil
+                                avatarItem = nil
+                                nickField = "Anon"
+                            }
+                            Button("Cancel", role: .cancel) {}
+                        }
+                    } else {
+                        Text("Sign in with Apple is optional. Letychka works fully without it and stays anonymous over Bluetooth. Signing in just lets you have an account you can delete.")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Theme.muted(scheme))
+                        SignInWithAppleButton(.signIn,
+                            onRequest: { req in req.requestedScopes = [.fullName] },
+                            onCompletion: { result in
+                                switch result {
+                                case .success(let auth):
+                                    if let cred = auth.credential as? ASAuthorizationAppleIDCredential {
+                                        appleUserID = cred.user
+                                        if let fn = cred.fullName?.givenName, !fn.isEmpty {
+                                            appleUserName = fn
+                                        }
+                                    }
+                                    signInError = nil
+                                case .failure(let err):
+                                    signInError = err.localizedDescription
+                                }
+                            })
+                        .signInWithAppleButtonStyle(scheme == .dark ? .white : .black)
+                        .frame(height: 44)
+                        if let msg = signInError {
+                            Text(msg).font(.system(size: 12)).foregroundStyle(.red)
+                        }
+                    }
+                }
                 Section("Your name") {
                     TextField("Anon", text: $nickField)
                         .onSubmit { ble.setNick(nickField) }
