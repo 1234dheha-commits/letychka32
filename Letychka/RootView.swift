@@ -11,6 +11,7 @@ struct RootView: View {
     @State private var showSettings = false
     @State private var avatar: UIImage?
     @State private var avatarItem: PhotosPickerItem?
+    @State private var bypassBT = false
 
     var body: some View {
         NavigationStack {
@@ -18,7 +19,7 @@ struct RootView: View {
                 Theme.bg(scheme).ignoresSafeArea()
                 VStack(spacing: 0) {
                     header
-                    if ble.status == .on {
+                    if ble.status == .on || bypassBT {
                         statusLine
                         RadarView(ble: ble) { chatPeer = $0 }
                             .padding(20)
@@ -138,6 +139,12 @@ struct RootView: View {
                 .buttonStyle(PrimaryButtonStyle())
                 .padding(.horizontal, 56).padding(.top, 6)
             }
+            Button("Continue without Bluetooth") {
+                bypassBT = true
+            }
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(Theme.accent)
+            .padding(.top, 2)
             Spacer()
             Spacer()
         }
