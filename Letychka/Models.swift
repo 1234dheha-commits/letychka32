@@ -2,13 +2,14 @@ import Foundation
 
 /// A nearby person discovered over Bluetooth. Fully anonymous: only a random
 /// per-session id and a self-chosen nickname, nothing tied to identity.
-struct Peer: Identifiable, Equatable {
+struct Peer: Identifiable, Equatable, Hashable {
     let id: String          // random peer id advertised this session
     var nick: String        // self-chosen display name
     var rssi: Int            // signal strength (used for radar distance)
     var lastSeen: Date
 
     static func == (a: Peer, b: Peer) -> Bool { a.id == b.id }
+    func hash(into hasher: inout Hasher) { hasher.combine(id) }
 }
 
 /// One chat message. Ephemeral: kept only in memory for the session.
