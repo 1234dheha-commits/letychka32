@@ -41,7 +41,7 @@ struct RootView: View {
         }
         .onChange(of: avatarItem) { _, item in
             guard let item else { return }
-            Task {
+            Task { @MainActor in
                 if let data = try? await item.loadTransferable(type: Data.self),
                    let ui = UIImage(data: data) {
                     AvatarStore.save(ui)

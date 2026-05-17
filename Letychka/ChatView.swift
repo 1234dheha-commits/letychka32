@@ -4,7 +4,6 @@ struct ChatView: View {
     @ObservedObject var ble: BLEMessenger
     let peer: Peer
     @Environment(\.colorScheme) private var scheme
-    @Environment(\.dismiss) private var dismiss
     @State private var draft = ""
 
     private var msgs: [ChatMessage] { ble.messages(with: peer.id) }

@@ -193,9 +193,14 @@ extension BLEMessenger: CBPeripheralManagerDelegate {
             permissions: [.writeable])
         let svc = CBMutableService(type: Self.serviceUUID, primary: true)
         svc.characteristics = [c]
-        pm.removeAllServices()
-        pm.add(svc)
         localChar = c
+        pm.removeAllServices()
+        pm.add(svc)   // advertising starts in didAdd, once the service exists
+    }
+
+    func peripheralManager(_ pm: CBPeripheralManager, didAdd service: CBService,
+                           error: Error?) {
+        guard error == nil else { return }
         restartAdvertising()
     }
 
