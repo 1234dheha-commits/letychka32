@@ -56,12 +56,11 @@ struct KeyButtonStyle: ButtonStyle {
     }
 }
 
-/// "light" | "dark" | "system" theme choice, persisted (mirrors Reboard).
+/// "light" | "dark" theme choice, persisted. No System: only Dark and Light.
+/// Default is Dark, so any unknown/legacy value resolves to the dark theme.
 enum AppTheme {
     static let key = "themeMode"
-    static func scheme(for mode: String) -> ColorScheme? {
-        switch mode { case "light": return .light
-                       case "dark":  return .dark
-                       default:      return nil }
+    static func scheme(for mode: String) -> ColorScheme {
+        mode == "light" ? .light : .dark
     }
 }

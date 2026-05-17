@@ -5,7 +5,7 @@ import UIKit
 struct LetychkaApp: App {
     // Theme is applied here at the root so EVERY view (and its
     // @Environment(\.colorScheme)) sees the same, correct value.
-    @AppStorage(AppTheme.key) private var themeMode = "system"
+    @AppStorage(AppTheme.key) private var themeMode = "dark"
 
     var body: some Scene {
         WindowGroup {

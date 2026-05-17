@@ -4,7 +4,7 @@ import PhotosUI
 
 struct RootView: View {
     @StateObject private var ble = BLEMessenger()
-    @AppStorage(AppTheme.key) private var themeMode = "system"
+    @AppStorage(AppTheme.key) private var themeMode = "dark"
     @Environment(\.colorScheme) private var scheme
     @State private var nickField = ""
     @State private var chatPeer: Peer?
@@ -183,7 +183,6 @@ struct RootView: View {
                 }
                 Section("Appearance") {
                     Picker("Theme", selection: $themeMode) {
-                        Text("System").tag("system")
                         Text("Light").tag("light")
                         Text("Dark").tag("dark")
                     }
