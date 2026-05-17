@@ -204,5 +204,9 @@ struct RootView: View {
             }
         }
         .tint(Theme.accent)
+        // A sheet has its own presentation environment and does NOT inherit
+        // the root's preferredColorScheme, so apply it here too. Reactive to
+        // themeMode, so the picker switches the sheet live.
+        .preferredColorScheme(AppTheme.scheme(for: themeMode))
     }
 }
