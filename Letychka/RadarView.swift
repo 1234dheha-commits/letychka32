@@ -87,6 +87,11 @@ struct RadarView: View {
                         }
                     }
                     .buttonStyle(.plain)
+                    .contextMenu {
+                        Button(role: .destructive) { ble.block(peer.id) } label: {
+                            Label("Block", systemImage: "hand.raised")
+                        }
+                    }
                     .position(x: c.x + cos(a) * r, y: c.y - sin(a) * r)
                     // Glide to a new distance instead of snapping each tick.
                     .animation(.easeInOut(duration: 0.9), value: r)

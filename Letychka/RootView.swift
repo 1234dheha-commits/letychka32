@@ -311,8 +311,23 @@ struct RootView: View {
                     }
                     .pickerStyle(.segmented)
                 }
+                if !ble.blocked.isEmpty {
+                    Section("Blocked") {
+                        ForEach(Array(ble.blocked), id: \.self) { bid in
+                            HStack {
+                                Text(ble.names[bid] ?? "Unknown")
+                                    .font(.system(size: 15))
+                                    .foregroundStyle(Theme.text(scheme))
+                                Spacer()
+                                Button("Unblock") { ble.unblock(bid) }
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(Theme.accent)
+                            }
+                        }
+                    }
+                }
                 Section("Privacy") {
-                    Text("Letychka has no account and no sign in. There is nothing to log out of: nothing about you is stored or sent anywhere. Your name and avatar stay only on this phone, and chats disappear when you close the app.")
+                    Text("Letychka has no account and no sign in. There is nothing to log out of: nothing about you is sent to any server. Your name, avatar and chats are stored only on this phone. Use the button below to wipe all of it.")
                         .font(.system(size: 12))
                         .foregroundStyle(Theme.muted(scheme))
                     Button(role: .destructive) {
@@ -322,7 +337,7 @@ struct RootView: View {
                     }
                 }
                 Section {
-                    Text("Letychka finds people near you over Bluetooth and lets you message them directly, with no internet and no servers. Everything is anonymous and disappears when you close the app.")
+                    Text("Letychka finds people near you over Bluetooth and lets you message them directly, with no internet and no servers. It stays anonymous and everything is kept only on your phone.")
                         .font(.system(size: 13))
                         .foregroundStyle(Theme.muted(scheme))
                 }

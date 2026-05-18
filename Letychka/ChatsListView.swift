@@ -59,7 +59,7 @@ struct ChatsListView: View {
             Text("No chats yet")
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(Theme.text(scheme))
-            Text("Find people on the radar and say hi. Chats live only while the app is open.")
+            Text("Find people on the radar and say hi. Chats are saved on this phone so they are still here next time.")
                 .font(.system(size: 13))
                 .foregroundStyle(Theme.muted(scheme))
                 .multilineTextAlignment(.center)
@@ -126,6 +126,9 @@ struct ChatsListView: View {
             }
             Button(role: .destructive) { ble.deleteConversation(c.id) } label: {
                 Label("Delete chat", systemImage: "trash")
+            }
+            Button(role: .destructive) { ble.block(c.id) } label: {
+                Label("Block", systemImage: "hand.raised")
             }
         }
     }

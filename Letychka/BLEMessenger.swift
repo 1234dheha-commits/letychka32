@@ -71,8 +71,66 @@ final class BLEMessenger: NSObject, ObservableObject {
     // Peripheral side
     private var localChar: CBMutableCharacteristic?
     private var subscribers: [CBCentral] = []
+    // Maps the volatile CoreBluetooth ids to our stable per-install ids.
+    private var cbToStable: [String: String] = [:]
+
+    /// Stable ids of people the user blocked. Persisted; blocked peers are
+    /// hidden from the radar and their frames are dropped.
+    @Published var blocked: Set<String> =
+        Set(UserDefaults.standard.stringArray(forKey: "blocked") ?? [])
+
+    private var loaded = false
+    private var saveScheduled = false
+    private var storeURL: URL? {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
+            .first?.appendingPathComponent("chats.json")
+    }
+    /// Debounced save so a burst of incoming frames does not thrash the disk.
+    private func persist() {
+        guard !saveScheduled else { return }
+        saveScheduled = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+            guard let self else { return }
+            self.saveScheduled = false
+            guard let u = self.storeURL,
+                  let d = try? JSONEncoder().encode(self.messages) else { return }
+            try? d.write(to: u, options: .atomic)
+        }
+    }
+    private func loadStore() {
+        guard !loaded else { return }
+        loaded = true
+        guard let u = storeURL, let d = try? Data(contentsOf: u),
+              let m = try? JSONDecoder().decode([ChatMessage].self, from: d)
+        else { return }
+        messages = m
+    }
+
+    func isBlocked(_ peerID: String) -> Bool { blocked.contains(peerID) }
+    func block(_ peerID: String) {
+        blocked.insert(peerID)
+        UserDefaults.standard.set(Array(blocked), forKey: "blocked")
+        peers.removeAll { $0.id == peerID }
+        discovered[peerID] = nil
+        connected[peerID] = nil
+    }
+    func unblock(_ peerID: String) {
+        blocked.remove(peerID)
+        UserDefaults.standard.set(Array(blocked), forKey: "blocked")
+    }
+
+    /// Send a frame to every reachable peer (used for live profile updates).
+    private func broadcast(_ frame: Data) {
+        let targets = Set(connected.keys).union(peers.map { $0.id })
+        if targets.isEmpty {
+            sendQueues["*", default: []].append(frame); pump("*")
+        } else {
+            for t in targets { enqueue([frame], to: t) }
+        }
+    }
 
     func start() {
+        loadStore()
         if central == nil {
             central = CBCentralManager(delegate: self, queue: .main)
             peripheral = CBPeripheralManager(delegate: self, queue: .main)
@@ -154,6 +212,7 @@ final class BLEMessenger: NSObject, ObservableObject {
         nick = v.isEmpty ? "Anon" : String(v.prefix(20))
         UserDefaults.standard.set(nick, forKey: "nick")
         restartAdvertising()
+        broadcast(Frame.profile(nick: nick))   // live rename on the other side
     }
 
     func messages(with peerID: String) -> [ChatMessage] {
@@ -172,6 +231,7 @@ final class BLEMessenger: NSObject, ObservableObject {
         let groups = Dictionary(grouping: messages, by: { $0.peerID })
         let online = Set(peers.map { $0.id })
         let list = groups.compactMap { (pid, msgs) -> Convo? in
+            if self.blocked.contains(pid) { return nil }
             guard let last = msgs.max(by: { $0.date < $1.date }) else { return nil }
             let nm = names[pid] ?? peers.first(where: { $0.id == pid })?.nick ?? "Anon"
             return Convo(id: pid, nick: nm, last: last,
@@ -193,15 +253,19 @@ final class BLEMessenger: NSObject, ObservableObject {
         messages.removeAll { $0.peerID == peerID }
         pinned.remove(peerID)
         names[peerID] = nil
+        persist()
     }
 
-    /// Wipe everything kept on this device: chats, names, pins, and reset the
-    /// nickname. There are no accounts or servers, so this IS the full
-    /// "delete my data". The avatar file is cleared by the caller.
+    /// Wipe everything kept on this device: chats, names, pins, blocks and
+    /// reset the nickname. There are no accounts or servers, so this IS the
+    /// full "delete my data". The avatar file is cleared by the caller.
     func clearAll() {
         messages.removeAll()
         pinned.removeAll()
         names.removeAll()
+        blocked.removeAll()
+        UserDefaults.standard.removeObject(forKey: "blocked")
+        if let u = storeURL { try? FileManager.default.removeItem(at: u) }
         setNick("")
     }
 
@@ -233,7 +297,10 @@ final class BLEMessenger: NSObject, ObservableObject {
 
     /// Delete locally; if it is our message, also tell the other phone.
     func deleteMessage(_ m: ChatMessage) {
-        DispatchQueue.main.async { self.messages.removeAll { $0.id == m.id } }
+        DispatchQueue.main.async {
+            self.messages.removeAll { $0.id == m.id }
+            self.persist()
+        }
         if m.mine, m.wireID != 0 {
             enqueue([Frame.del(msgID: m.wireID)], to: m.peerID)
         }
@@ -247,6 +314,7 @@ final class BLEMessenger: NSObject, ObservableObject {
         DispatchQueue.main.async {
             if let i = self.messages.firstIndex(where: { $0.id == m.id }) {
                 self.messages[i].text = nt
+                self.persist()
             }
         }
         if m.wireID != 0 {
@@ -298,6 +366,7 @@ final class BLEMessenger: NSObject, ObservableObject {
     private func append(_ m: ChatMessage) {
         DispatchQueue.main.async {
             self.messages.append(m)
+            self.persist()
             guard !m.mine, m.peerID != self.activeChat else { return }
             self.unread[m.peerID, default: 0] += 1
             UNUserNotificationCenter.current().setBadgeCount(self.unreadTotal)
@@ -317,16 +386,21 @@ final class BLEMessenger: NSObject, ObservableObject {
     }
     private var inbox: [UInt32: Inbox] = [:]
 
-    private func handleFrame(_ data: Data, from peerID: String) {
-        guard let kind = data.first else { return }
-        let body = [UInt8](data.dropFirst())
+    private func handleFrame(_ data: Data, fromCB cbid: String) {
+        guard data.count >= Frame.header else { return }
+        let s = data.startIndex
+        let kind = data[s]
+        let sid = String(bytes: data[(s + 1)..<(s + 9)], encoding: .utf8) ?? cbid
+        if blocked.contains(sid) { return }       // ignore blocked people
+        cbToStable[cbid] = sid
+        let body = [UInt8](data.dropFirst(Frame.header))
         switch kind {
         case Frame.TEXT:
             guard body.count >= 4 else { return }
             let mid = Frame.readU32(body, 0)
             guard let msg = Wire.decode(Data(body[4...])) else { return }
-            if !msg.nick.isEmpty { upsertPeer(id: peerID, nick: msg.nick, rssi: 0) }
-            append(ChatMessage(peerID: peerID, mine: false,
+            if !msg.nick.isEmpty { upsertPeer(id: sid, nick: msg.nick, rssi: 0) }
+            append(ChatMessage(peerID: sid, mine: false,
                                text: msg.text, date: Date(), wireID: mid))
         case Frame.HEAD:
             guard body.count >= 13 else { return }
@@ -335,12 +409,12 @@ final class BLEMessenger: NSObject, ObservableObject {
             let mtype = body[8]
             let mid = Frame.readU32(body, 9)
             let nm = String(bytes: body[13...], encoding: .utf8) ?? ""
-            if !nm.isEmpty { upsertPeer(id: peerID, nick: nm, rssi: 0) }
+            if !nm.isEmpty { upsertPeer(id: sid, nick: nm, rssi: 0) }
             guard total > 0, total <= 3_000_000 else { return }   // sanity cap
             inbox[xfer] = Inbox(type: mtype, total: total,
                                 buf: [UInt8](repeating: 0, count: total),
-                                received: 0, peer: peerID, msgID: mid)
-            setIncoming(peerID, 0)
+                                received: 0, peer: sid, msgID: mid)
+            setIncoming(sid, 0)
         case Frame.CHUNK:
             guard body.count >= 8, var box = inbox[Frame.readU32(body, 0)] else { return }
             let xfer = Frame.readU32(body, 0)
@@ -351,27 +425,31 @@ final class BLEMessenger: NSObject, ObservableObject {
             box.buf.replaceSubrange(off..<off+n, with: payload)
             box.received += n
             inbox[xfer] = box
-            setIncoming(peerID, min(100, box.received * 100 / max(1, box.total)))
+            setIncoming(sid, min(100, box.received * 100 / max(1, box.total)))
         case Frame.END:
             guard body.count >= 4 else { return }
             let xfer = Frame.readU32(body, 0)
             guard let box = inbox[xfer] else { return }
             inbox[xfer] = nil
-            clearIncoming(peerID)
+            clearIncoming(sid)
             append(ChatMessage(peerID: box.peer, mine: false, text: "",
                                date: Date(),
                                kind: box.type == Frame.typeImage ? .image : .audio,
                                data: Data(box.buf), wireID: box.msgID))
         case Frame.TYPING:
             DispatchQueue.main.async {
-                self.typing[peerID] = Date()
+                self.typing[sid] = Date()
                 self.startTypingPrune()
             }
+        case Frame.PROFILE:
+            let nm = String(bytes: body[0...], encoding: .utf8) ?? ""
+            if !nm.isEmpty { upsertPeer(id: sid, nick: nm, rssi: 0) }
         case Frame.DEL:
             guard body.count >= 4 else { return }
             let mid = Frame.readU32(body, 0)
             DispatchQueue.main.async {
-                self.messages.removeAll { $0.wireID == mid && $0.peerID == peerID }
+                self.messages.removeAll { $0.wireID == mid && $0.peerID == sid }
+                self.persist()
             }
         case Frame.EDIT:
             guard body.count >= 4 else { return }
@@ -380,8 +458,8 @@ final class BLEMessenger: NSObject, ObservableObject {
             guard !nt.isEmpty else { return }
             DispatchQueue.main.async {
                 if let i = self.messages.firstIndex(where: {
-                    $0.wireID == mid && $0.peerID == peerID
-                }) { self.messages[i].text = nt }
+                    $0.wireID == mid && $0.peerID == sid
+                }) { self.messages[i].text = nt; self.persist() }
             }
         default:
             return
@@ -397,6 +475,7 @@ final class BLEMessenger: NSObject, ObservableObject {
 
     private func upsertPeer(id: String, nick: String, rssi: Int) {
         DispatchQueue.main.async {
+            if self.blocked.contains(id) { return }
             if !nick.isEmpty { self.names[id] = nick }
             if let i = self.peers.firstIndex(where: { $0.id == id }) {
                 // Exponential smoothing so the radar blip glides instead of
@@ -411,15 +490,6 @@ final class BLEMessenger: NSObject, ObservableObject {
                 }
                 self.peers[i].lastSeen = Date()
                 if !nick.isEmpty { self.peers[i].nick = nick }
-            } else if !nick.isEmpty, nick != "Anon",
-                      let j = self.peers.firstIndex(where: { $0.nick == nick }) {
-                // Same person re-appeared under a new Bluetooth id (they
-                // toggled BT / re-advertised). Keep ONE blip and track the
-                // newest id so a tap still reaches them, instead of stacking
-                // duplicate jittering dots.
-                let keepRssi = rssi == 0 ? self.peers[j].rssi : rssi
-                self.peers[j] = Peer(id: id, nick: nick,
-                                     rssi: keepRssi, lastSeen: Date())
             } else {
                 self.peers.append(Peer(id: id, nick: nick.isEmpty ? "Anon" : nick,
                                        rssi: rssi == 0 ? -65 : rssi, lastSeen: Date()))
@@ -433,9 +503,12 @@ final class BLEMessenger: NSObject, ObservableObject {
     private func restartAdvertising() {
         guard visible, peripheral?.state == .poweredOn else { return }
         peripheral.stopAdvertising()
+        // id first (fixed 8 chars) so it survives if iOS truncates the
+        // advertised name; nick capped so the whole thing stays small.
+        let adv = Ident.me + String(Wire.sep) + String(nick.prefix(16))
         peripheral.startAdvertising([
             CBAdvertisementDataServiceUUIDsKey: [Self.serviceUUID],
-            CBAdvertisementDataLocalNameKey: nick
+            CBAdvertisementDataLocalNameKey: adv
         ])
     }
 }
@@ -461,21 +534,36 @@ extension BLEMessenger: CBCentralManagerDelegate {
 
     func centralManager(_ m: CBCentralManager, didDiscover p: CBPeripheral,
                         advertisementData: [String: Any], rssi RSSI: NSNumber) {
-        let id = p.identifier.uuidString
-        let name = (advertisementData[CBAdvertisementDataLocalNameKey] as? String) ?? p.name ?? ""
-        discovered[id] = p
-        upsertPeer(id: id, nick: name, rssi: RSSI.intValue)
+        let cbid = p.identifier.uuidString
+        let name = (advertisementData[CBAdvertisementDataLocalNameKey] as? String)
+                   ?? p.name ?? ""
+        // Advertised name is "stableID\u{1}nick". Fall back to the CB id if a
+        // peer is somehow advertising the old plain-name format.
+        let parts = name.split(separator: Wire.sep, maxSplits: 1,
+                               omittingEmptySubsequences: false)
+        let sid = (parts.count == 2 && parts[0].count == 8)
+                  ? String(parts[0]) : cbid
+        let nm = (parts.count == 2 && parts[0].count == 8)
+                 ? String(parts[1]) : name
+        if blocked.contains(sid) { return }
+        cbToStable[cbid] = sid
+        discovered[sid] = p
+        upsertPeer(id: sid, nick: nm, rssi: RSSI.intValue)
+    }
+
+    private func stable(for p: CBPeripheral) -> String {
+        cbToStable[p.identifier.uuidString] ?? p.identifier.uuidString
     }
 
     func centralManager(_ m: CBCentralManager, didConnect p: CBPeripheral) {
-        connected[p.identifier.uuidString] = p
+        connected[stable(for: p)] = p
         p.delegate = self
         p.discoverServices([Self.serviceUUID])
     }
 
     func centralManager(_ m: CBCentralManager, didDisconnectPeripheral p: CBPeripheral,
                         error: Error?) {
-        let id = p.identifier.uuidString
+        let id = stable(for: p)
         connected[id] = nil
         outChar[id] = nil
         inflight.remove(id)
@@ -494,7 +582,7 @@ extension BLEMessenger: CBPeripheralDelegate {
     func peripheral(_ p: CBPeripheral, didDiscoverCharacteristicsFor s: CBService,
                     error: Error?) {
         for c in s.characteristics ?? [] where c.uuid == Self.charUUID {
-            let id = p.identifier.uuidString
+            let id = stable(for: p)
             outChar[id] = c
             p.setNotifyValue(true, for: c)
             pump(id)
@@ -504,12 +592,12 @@ extension BLEMessenger: CBPeripheralDelegate {
     func peripheral(_ p: CBPeripheral, didUpdateValueFor c: CBCharacteristic,
                     error: Error?) {
         guard let data = c.value else { return }
-        handleFrame(data, from: p.identifier.uuidString)
+        handleFrame(data, fromCB: p.identifier.uuidString)
     }
 
     func peripheral(_ p: CBPeripheral, didWriteValueFor c: CBCharacteristic,
                     error: Error?) {
-        let id = p.identifier.uuidString
+        let id = stable(for: p)
         inflight.remove(id)
         pump(id)   // send the next queued frame
     }
@@ -542,7 +630,7 @@ extension BLEMessenger: CBPeripheralManagerDelegate {
                            didReceiveWrite requests: [CBATTRequest]) {
         for r in requests {
             if let data = r.value {
-                handleFrame(data, from: r.central.identifier.uuidString)
+                handleFrame(data, fromCB: r.central.identifier.uuidString)
             }
             pm.respond(to: r, withResult: .success)
         }
@@ -557,7 +645,9 @@ extension BLEMessenger: CBPeripheralManagerDelegate {
         if !subscribers.contains(where: { $0.identifier == central.identifier }) {
             subscribers.append(central)
         }
-        pump(central.identifier.uuidString)
+        // We do not know this central's stable id yet, so flush every queue;
+        // the peripheral branch of pump notifies all subscribers anyway.
+        for k in sendQueues.keys { pump(k) }
     }
 
     func peripheralManager(_ pm: CBPeripheralManager, central: CBCentral,
