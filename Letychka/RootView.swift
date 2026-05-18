@@ -33,7 +33,9 @@ struct RootView: View {
                             Text(ble.unreadTotal > 0
                                  ? L("Chats (%d)", ble.unreadTotal)
                                  : L("Chats")).tag(1)
-                            Text(L("Room")).tag(2)
+                            Text(ble.roomUnread > 0
+                                 ? L("Room (%d)", ble.roomUnread)
+                                 : L("Room")).tag(2)
                         }
                         .pickerStyle(.segmented)
                         .padding(.horizontal, 20)
@@ -73,6 +75,10 @@ struct RootView: View {
             }
             ble.start()
             ble.setMyAvatar(Self.tinyAvatar(avatar))
+            if tab == 2 { ble.openRoom() } else { ble.closeRoom() }
+        }
+        .onChange(of: tab) { _, t in
+            if t == 2 { ble.openRoom() } else { ble.closeRoom() }
         }
         .onChange(of: avatarItem) { _, item in
             guard let item else { return }

@@ -53,6 +53,18 @@ final class BLEMessenger: NSObject, ObservableObject {
 
     var poweredOn: Bool { status == .on }
     var unreadTotal: Int { unread.values.reduce(0, +) }
+    /// Unseen messages in the shared Room (not tied to a person).
+    @Published var roomUnread = 0
+    /// Set by the UI so Room messages while the Room is on screen are not
+    /// counted unread / do not notify.
+    var roomActive = false
+    var badgeCount: Int { unreadTotal + roomUnread }
+
+    func openRoom() {
+        roomActive = true
+        if roomUnread != 0 { roomUnread = 0; refreshBadge() }
+    }
+    func closeRoom() { roomActive = false }
 
     func isTyping(_ peerID: String) -> Bool {
         guard let t = typing[peerID] else { return false }
@@ -89,8 +101,7 @@ final class BLEMessenger: NSObject, ObservableObject {
     }
 
     private func refreshBadge() {
-        let n = unreadTotal
-        UNUserNotificationCenter.current().setBadgeCount(n)
+        UNUserNotificationCenter.current().setBadgeCount(badgeCount)
     }
 
     private var central: CBCentralManager!
@@ -233,6 +244,10 @@ final class BLEMessenger: NSObject, ObservableObject {
                 self.roomMessages.removeFirst(self.roomMessages.count - 500)
             }
             self.persistRoom()
+            guard !m.mine, !self.roomActive else { return }
+            self.roomUnread += 1
+            UNUserNotificationCenter.current().setBadgeCount(self.badgeCount)
+            self.notify(m, room: true)
         }
     }
 
@@ -338,10 +353,12 @@ final class BLEMessenger: NSObject, ObservableObject {
         }
     }
 
-    private func notify(_ m: ChatMessage) {
-        guard notifOK, !muted.contains(m.peerID) else { return }
+    private func notify(_ m: ChatMessage, room: Bool = false) {
+        guard notifOK else { return }
+        if !room, muted.contains(m.peerID) { return }
         let c = UNMutableNotificationContent()
         c.title = names[m.peerID] ?? "Letychka"
+        if room { c.subtitle = L("Room") }
         switch m.kind {
         case .text:  c.body = m.text
         case .image: c.body = L("Photo")
@@ -412,6 +429,7 @@ final class BLEMessenger: NSObject, ObservableObject {
         blocked.removeAll()
         UserDefaults.standard.removeObject(forKey: "blocked")
         roomMessages.removeAll()
+        roomUnread = 0
         avatars.removeAll()
         myAvatarBlob = nil
         sentAvatarTo.removeAll()
@@ -533,7 +551,7 @@ final class BLEMessenger: NSObject, ObservableObject {
                 return
             }
             self.unread[m.peerID, default: 0] += 1
-            UNUserNotificationCenter.current().setBadgeCount(self.unreadTotal)
+            UNUserNotificationCenter.current().setBadgeCount(self.badgeCount)
             self.notify(m)
         }
     }
