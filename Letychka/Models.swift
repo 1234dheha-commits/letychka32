@@ -25,9 +25,14 @@ struct ChatMessage: Identifiable, Equatable, Codable {
     let data: Data?
     let date: Date
     let wireID: UInt32
+    /// Single emoji reaction set by either side (nil = none).
+    var reaction: String?
+    /// wireID of the message this one replies to (0/nil = not a reply).
+    var replyTo: UInt32?
 
     init(peerID: String, mine: Bool, text: String, date: Date,
-         kind: MsgKind = .text, data: Data? = nil, wireID: UInt32 = 0) {
+         kind: MsgKind = .text, data: Data? = nil, wireID: UInt32 = 0,
+         replyTo: UInt32? = nil) {
         self.peerID = peerID
         self.mine = mine
         self.text = text
@@ -35,6 +40,7 @@ struct ChatMessage: Identifiable, Equatable, Codable {
         self.kind = kind
         self.data = data
         self.wireID = wireID
+        self.replyTo = (replyTo ?? 0) == 0 ? nil : replyTo
     }
 }
 
@@ -72,7 +78,7 @@ enum Wire {
 /// volatile CoreBluetooth identifiers. Pre-release, both phones run the same
 /// build, so no back-compat shim is needed.
 ///
-///   TEXT    1 : [4 msgID][utf8 "nick\u{1}text"]
+///   TEXT    1 : [4 msgID][4 replyTo][utf8 "nick\u{1}text"]
 ///   HEAD    2 : [4 xfer][4 total][1 type(1=jpeg,2=m4a)][4 msgID][utf8 nick]
 ///   CHUNK   3 : [4 xfer][4 offset][raw bytes]
 ///   END     4 : [4 xfer]
@@ -80,6 +86,8 @@ enum Wire {
 ///   EDIT    6 : [4 msgID][utf8 newText]
 ///   TYPING  7 : (empty)
 ///   PROFILE 8 : [utf8 nick]              (live rename)
+///   REACT   9 : [4 msgID][utf8 emoji]    (emoji "" clears it)
+///   SEEN   10 : [4 lastWireID]           (read receipt up to that id)
 enum Frame {
     static let TEXT:    UInt8 = 0x01
     static let HEAD:    UInt8 = 0x02
@@ -89,6 +97,8 @@ enum Frame {
     static let EDIT:    UInt8 = 0x06
     static let TYPING:  UInt8 = 0x07
     static let PROFILE: UInt8 = 0x08
+    static let REACT:   UInt8 = 0x09
+    static let SEEN:    UInt8 = 0x0A
 
     static let typeImage: UInt8 = 1
     static let typeAudio: UInt8 = 2
@@ -117,8 +127,15 @@ enum Frame {
         return d
     }
 
-    static func text(nick: String, text: String, msgID: UInt32) -> Data {
-        wrap(TEXT, u32(msgID) + Wire.encode(nick: nick, text: text))
+    static func text(nick: String, text: String, msgID: UInt32,
+                     replyTo: UInt32 = 0) -> Data {
+        wrap(TEXT, u32(msgID) + u32(replyTo) + Wire.encode(nick: nick, text: text))
+    }
+    static func react(msgID: UInt32, emoji: String) -> Data {
+        wrap(REACT, u32(msgID) + Data(emoji.utf8))
+    }
+    static func seen(lastWireID: UInt32) -> Data {
+        wrap(SEEN, u32(lastWireID))
     }
     static func head(xfer: UInt32, total: Int, type: UInt8,
                      msgID: UInt32, nick: String) -> Data {

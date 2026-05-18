@@ -13,7 +13,9 @@ struct ChatView: View {
     @StateObject private var player = AudioPlayer()
     @State private var notice: String?
     @State private var editing: ChatMessage?
+    @State private var replyingTo: ChatMessage?
     @State private var lastTyped = Date.distantPast
+    private let emojis = ["👍", "❤️", "😂", "🔥", "😮", "😢"]
 
     private var msgs: [ChatMessage] { ble.messages(with: peer.id) }
     private var receiving: Int? { ble.incoming[peer.id] }
@@ -26,7 +28,7 @@ struct ChatView: View {
                         ForEach(msgs) { m in
                             HStack {
                                 if m.mine { Spacer(minLength: 40) }
-                                bubble(m)
+                                row(m)
                                     .contextMenu { menu(m) }
                                 if !m.mine { Spacer(minLength: 40) }
                             }
@@ -81,6 +83,23 @@ struct ChatView: View {
                 .padding(.horizontal, 18).padding(.top, 6)
             }
 
+            if let r = replyingTo {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrowshape.turn.up.left")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.accent)
+                    Text("Reply: \(snippet(r))")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.muted(scheme))
+                        .lineLimit(1)
+                    Spacer()
+                    Button("Cancel") { replyingTo = nil }
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Theme.accent)
+                }
+                .padding(.horizontal, 18).padding(.top, 6)
+            }
+
             inputBar
         }
         .background(Theme.bg(scheme).ignoresSafeArea())
@@ -105,6 +124,56 @@ struct ChatView: View {
                     else { notice = "Could not attach that photo" }
                     photoItem = nil
                 }
+            }
+        }
+    }
+
+    // MARK: Row (reply preview + bubble + reaction + seen)
+
+    private func snippet(_ m: ChatMessage) -> String {
+        switch m.kind {
+        case .text:  return String(m.text.prefix(50))
+        case .image: return "Photo"
+        case .audio: return "Voice message"
+        }
+    }
+
+    private var lastMineID: UUID? {
+        msgs.last(where: { $0.mine })?.id
+    }
+
+    @ViewBuilder
+    private func row(_ m: ChatMessage) -> some View {
+        VStack(alignment: m.mine ? .trailing : .leading, spacing: 2) {
+            if let rid = m.replyTo,
+               let orig = msgs.first(where: { $0.wireID == rid }) {
+                HStack(spacing: 5) {
+                    Rectangle().fill(Theme.accent).frame(width: 2, height: 14)
+                    Text(snippet(orig))
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.muted(scheme))
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 6)
+            }
+            bubble(m)
+                .overlay(alignment: m.mine ? .bottomLeading : .bottomTrailing) {
+                    if let r = m.reaction {
+                        Text(r)
+                            .font(.system(size: 14))
+                            .padding(3)
+                            .background(Theme.bg(scheme), in: Circle())
+                            .overlay(Circle().stroke(Theme.line(scheme),
+                                                     lineWidth: 0.5))
+                            .offset(x: m.mine ? -8 : 8, y: 9)
+                    }
+                }
+            if m.mine, m.id == lastMineID, m.wireID != 0,
+               let up = ble.seenUpTo[peer.id], m.wireID <= up {
+                Text("Seen")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.muted(scheme))
+                    .padding(.trailing, 4)
             }
         }
     }
@@ -139,9 +208,23 @@ struct ChatView: View {
 
     @ViewBuilder
     private func menu(_ m: ChatMessage) -> some View {
+        Menu {
+            ForEach(emojis, id: \.self) { e in
+                Button(e) { ble.sendReaction(m, m.reaction == e ? "" : e) }
+            }
+            if m.reaction != nil {
+                Button(role: .destructive) { ble.sendReaction(m, "") } label: {
+                    Label("Remove reaction", systemImage: "xmark")
+                }
+            }
+        } label: { Label("React", systemImage: "face.smiling") }
+        Button { replyingTo = m; editing = nil } label: {
+            Label("Reply", systemImage: "arrowshape.turn.up.left")
+        }
         if m.mine && m.kind == .text {
             Button {
                 editing = m
+                replyingTo = nil
                 draft = m.text
             } label: { Label("Edit", systemImage: "pencil") }
         }
@@ -226,7 +309,9 @@ struct ChatView: View {
                     ble.editMessage(e, newText: draft)
                     editing = nil
                 } else {
-                    ble.send(draft, to: peer.id)
+                    ble.send(draft, to: peer.id,
+                             replyTo: replyingTo?.wireID ?? 0)
+                    replyingTo = nil
                 }
                 draft = ""
             } label: {

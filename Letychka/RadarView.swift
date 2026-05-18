@@ -88,6 +88,10 @@ struct RadarView: View {
                     }
                     .buttonStyle(.plain)
                     .contextMenu {
+                        Button { ble.toggleMute(peer.id) } label: {
+                            Label(ble.isMuted(peer.id) ? "Unmute" : "Mute",
+                                  systemImage: ble.isMuted(peer.id) ? "bell" : "bell.slash")
+                        }
                         Button(role: .destructive) { ble.block(peer.id) } label: {
                             Label("Block", systemImage: "hand.raised")
                         }

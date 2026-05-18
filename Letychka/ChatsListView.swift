@@ -124,6 +124,10 @@ struct ChatsListView: View {
                 Label(isPinned ? "Unpin" : "Pin to top",
                       systemImage: isPinned ? "pin.slash" : "pin")
             }
+            Button { ble.toggleMute(c.id) } label: {
+                Label(ble.isMuted(c.id) ? "Unmute" : "Mute",
+                      systemImage: ble.isMuted(c.id) ? "bell" : "bell.slash")
+            }
             Button(role: .destructive) { ble.deleteConversation(c.id) } label: {
                 Label("Delete chat", systemImage: "trash")
             }

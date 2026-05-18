@@ -53,8 +53,31 @@ final class BLEMessenger: NSObject, ObservableObject {
     func openChat(_ peerID: String) {
         activeChat = peerID
         if unread[peerID] != nil { unread[peerID] = nil; refreshBadge() }
+        sendSeen(to: peerID)
     }
     func closeChat() { activeChat = nil }
+
+    /// Tell the peer we have read their messages (up to the newest id).
+    func sendSeen(to peerID: String) {
+        let maxID = messages
+            .filter { $0.peerID == peerID && !$0.mine && $0.wireID != 0 }
+            .map { $0.wireID }.max()
+        guard let maxID else { return }
+        enqueue([Frame.seen(lastWireID: maxID)], to: peerID)
+    }
+
+    /// React to a message with one emoji (or "" to clear), mirror to the peer.
+    func sendReaction(_ m: ChatMessage, _ emoji: String) {
+        DispatchQueue.main.async {
+            if let i = self.messages.firstIndex(where: { $0.id == m.id }) {
+                self.messages[i].reaction = emoji.isEmpty ? nil : emoji
+                self.persist()
+            }
+        }
+        if m.wireID != 0 {
+            enqueue([Frame.react(msgID: m.wireID, emoji: emoji)], to: m.peerID)
+        }
+    }
 
     private func refreshBadge() {
         let n = unreadTotal
@@ -78,6 +101,18 @@ final class BLEMessenger: NSObject, ObservableObject {
     /// hidden from the radar and their frames are dropped.
     @Published var blocked: Set<String> =
         Set(UserDefaults.standard.stringArray(forKey: "blocked") ?? [])
+    /// Stable ids whose chats are muted (no notification). Persisted.
+    @Published var muted: Set<String> =
+        Set(UserDefaults.standard.stringArray(forKey: "muted") ?? [])
+    /// peerID -> highest wireID of OUR messages they have seen (read receipt).
+    @Published var seenUpTo: [String: UInt32] = [:]
+
+    func isMuted(_ peerID: String) -> Bool { muted.contains(peerID) }
+    func toggleMute(_ peerID: String) {
+        if muted.contains(peerID) { muted.remove(peerID) }
+        else { muted.insert(peerID) }
+        UserDefaults.standard.set(Array(muted), forKey: "muted")
+    }
 
     private var loaded = false
     private var saveScheduled = false
@@ -193,7 +228,7 @@ final class BLEMessenger: NSObject, ObservableObject {
     }
 
     private func notify(_ m: ChatMessage) {
-        guard notifOK else { return }
+        guard notifOK, !muted.contains(m.peerID) else { return }
         let c = UNMutableNotificationContent()
         c.title = names[m.peerID] ?? "Letychka"
         switch m.kind {
@@ -274,14 +309,14 @@ final class BLEMessenger: NSObject, ObservableObject {
     private var sendQueues: [String: [Data]] = [:]   // peerID -> frames FIFO
     private var inflight: Set<String> = []            // central write outstanding
 
-    func send(_ text: String, to peerID: String) {
+    func send(_ text: String, to peerID: String, replyTo: UInt32 = 0) {
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty else { return }
         let mid = Frame.newID()
-        enqueue([Frame.text(nick: nick, text: String(t.prefix(240)), msgID: mid)],
-                to: peerID)
+        enqueue([Frame.text(nick: nick, text: String(t.prefix(240)),
+                            msgID: mid, replyTo: replyTo)], to: peerID)
         append(ChatMessage(peerID: peerID, mine: true, text: t, date: Date(),
-                           wireID: mid))
+                           wireID: mid, replyTo: replyTo))
     }
 
     /// Send a compressed blob (small JPEG or short m4a) split into frames.
@@ -367,7 +402,11 @@ final class BLEMessenger: NSObject, ObservableObject {
         DispatchQueue.main.async {
             self.messages.append(m)
             self.persist()
-            guard !m.mine, m.peerID != self.activeChat else { return }
+            guard !m.mine else { return }
+            if m.peerID == self.activeChat {
+                self.sendSeen(to: m.peerID)   // they will see "Seen"
+                return
+            }
             self.unread[m.peerID, default: 0] += 1
             UNUserNotificationCenter.current().setBadgeCount(self.unreadTotal)
             self.notify(m)
@@ -396,12 +435,14 @@ final class BLEMessenger: NSObject, ObservableObject {
         let body = [UInt8](data.dropFirst(Frame.header))
         switch kind {
         case Frame.TEXT:
-            guard body.count >= 4 else { return }
+            guard body.count >= 8 else { return }
             let mid = Frame.readU32(body, 0)
-            guard let msg = Wire.decode(Data(body[4...])) else { return }
+            let rep = Frame.readU32(body, 4)
+            guard let msg = Wire.decode(Data(body[8...])) else { return }
             if !msg.nick.isEmpty { upsertPeer(id: sid, nick: msg.nick, rssi: 0) }
             append(ChatMessage(peerID: sid, mine: false,
-                               text: msg.text, date: Date(), wireID: mid))
+                               text: msg.text, date: Date(),
+                               wireID: mid, replyTo: rep))
         case Frame.HEAD:
             guard body.count >= 13 else { return }
             let xfer = Frame.readU32(body, 0)
@@ -444,6 +485,22 @@ final class BLEMessenger: NSObject, ObservableObject {
         case Frame.PROFILE:
             let nm = String(bytes: body[0...], encoding: .utf8) ?? ""
             if !nm.isEmpty { upsertPeer(id: sid, nick: nm, rssi: 0) }
+        case Frame.REACT:
+            guard body.count >= 4 else { return }
+            let mid = Frame.readU32(body, 0)
+            let emoji = String(bytes: body[4...], encoding: .utf8) ?? ""
+            DispatchQueue.main.async {
+                if let i = self.messages.firstIndex(where: {
+                    $0.wireID == mid && $0.peerID == sid
+                }) {
+                    self.messages[i].reaction = emoji.isEmpty ? nil : emoji
+                    self.persist()
+                }
+            }
+        case Frame.SEEN:
+            guard body.count >= 4 else { return }
+            let upTo = Frame.readU32(body, 0)
+            DispatchQueue.main.async { self.seenUpTo[sid] = upTo }
         case Frame.DEL:
             guard body.count >= 4 else { return }
             let mid = Frame.readU32(body, 0)
