@@ -6,6 +6,7 @@ import AuthenticationServices
 struct RootView: View {
     @StateObject private var ble = BLEMessenger.shared
     @AppStorage(AppTheme.key) private var themeMode = "dark"
+    @AppStorage("hideHints") private var hideHints = false
     @Environment(\.colorScheme) private var scheme
     @State private var nickField = ""
     @State private var chatPeer: Peer?
@@ -39,10 +40,15 @@ struct RootView: View {
                         .padding(.top, 10)
 
                         if tab == 0 {
-                            statusLine
+                            if !ble.visible {
+                                Text(L("You are hidden. Turn it back on in Settings."))
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(Theme.accent)
+                                    .padding(.top, 6)
+                            }
                             RadarView(ble: ble) { chatPeer = $0 }
                                 .padding(20)
-                            footer
+                            if !hideHints { footer }
                         } else if tab == 1 {
                             ChatsListView(ble: ble) { chatPeer = $0 }
                         } else {
@@ -97,21 +103,6 @@ struct RootView: View {
             }
         }
         .padding(.horizontal, 20).padding(.top, 8)
-    }
-
-    private var statusText: String {
-        if !ble.visible { return L("You are hidden. Turn it back on in Settings.") }
-        if !ble.poweredOn { return L("Turn on Bluetooth to find people nearby") }
-        return ble.peers.isEmpty
-            ? L("Looking for people nearby")
-            : L("%d nearby, tap to chat", ble.peers.count)
-    }
-
-    private var statusLine: some View {
-        Text(statusText)
-            .font(.system(size: 13))
-            .foregroundStyle(Theme.muted(scheme))
-            .padding(.top, 6)
     }
 
     private var footer: some View {
@@ -277,9 +268,11 @@ struct RootView: View {
                     Toggle(L("Show me on the radar"), isOn: Binding(
                         get: { ble.visible },
                         set: { ble.setVisible($0) }))
-                    Text(L("Turn off to disconnect from the map. You become invisible to people nearby and your radar clears. Turn it back on to reconnect."))
-                        .font(.system(size: 12))
-                        .foregroundStyle(Theme.muted(scheme))
+                    if !hideHints {
+                        Text(L("Turn off to disconnect from the map. You become invisible to people nearby and your radar clears. Turn it back on to reconnect."))
+                            .font(.system(size: 12))
+                            .foregroundStyle(Theme.muted(scheme))
+                    }
                 }
                 Section(L("Avatar")) {
                     HStack(spacing: 14) {
@@ -307,9 +300,11 @@ struct RootView: View {
                             }
                         }
                     }
-                    Text(L("Your avatar is local only. It is not sent to people nearby; Bluetooth carries just short text."))
-                        .font(.system(size: 12))
-                        .foregroundStyle(Theme.muted(scheme))
+                    if !hideHints {
+                        Text(L("Your avatar is local only. It is not sent to people nearby; Bluetooth carries just short text."))
+                            .font(.system(size: 12))
+                            .foregroundStyle(Theme.muted(scheme))
+                    }
                 }
                 Section(L("Appearance")) {
                     Picker(L("Theme"), selection: $themeMode) {
@@ -317,6 +312,7 @@ struct RootView: View {
                         Text(L("Dark")).tag("dark")
                     }
                     .pickerStyle(.segmented)
+                    Toggle(L("Hide hints"), isOn: $hideHints)
                 }
                 if !ble.blocked.isEmpty {
                     Section(L("Blocked")) {
@@ -343,10 +339,12 @@ struct RootView: View {
                         Text(L("Clear everything on this phone"))
                     }
                 }
-                Section {
-                    Text(L("Letychka finds people near you over Bluetooth and lets you message them directly, with no internet and no servers. It stays anonymous and everything is kept only on your phone."))
-                        .font(.system(size: 13))
-                        .foregroundStyle(Theme.muted(scheme))
+                if !hideHints {
+                    Section {
+                        Text(L("Letychka finds people near you over Bluetooth and lets you message them directly, with no internet and no servers. It stays anonymous and everything is kept only on your phone."))
+                            .font(.system(size: 13))
+                            .foregroundStyle(Theme.muted(scheme))
+                    }
                 }
             }
             .navigationTitle(L("Settings"))

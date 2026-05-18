@@ -64,6 +64,7 @@
 "Remove photo" = "Убрать фото";
 "Your avatar is local only. It is not sent to people nearby; Bluetooth carries just short text." = "Аватар только локальный. Его не отправляют людям рядом; Bluetooth передаёт только короткий текст.";
 "Appearance" = "Оформление";
+"Hide hints" = "Скрыть подсказки";
 "Theme" = "Тема";
 "Light" = "Светлая";
 "Dark" = "Тёмная";

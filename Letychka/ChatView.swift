@@ -157,17 +157,15 @@ struct ChatView: View {
                 .padding(.horizontal, 6)
             }
             bubble(m)
-                .overlay(alignment: m.mine ? .bottomLeading : .bottomTrailing) {
-                    if let r = m.reaction {
-                        Text(r)
-                            .font(.system(size: 14))
-                            .padding(3)
-                            .background(Theme.bg(scheme), in: Circle())
-                            .overlay(Circle().stroke(Theme.line(scheme),
-                                                     lineWidth: 0.5))
-                            .offset(x: m.mine ? -8 : 8, y: 9)
-                    }
-                }
+            if let r = m.reaction {
+                Text(r)
+                    .font(.system(size: 13))
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(Theme.surface(scheme), in: Capsule())
+                    .overlay(Capsule().stroke(Theme.line(scheme), lineWidth: 0.5))
+                    .padding(m.mine ? .trailing : .leading, 6)
+            }
             if m.mine, m.id == lastMineID {
                 TimelineView(.periodic(from: .now, by: 5)) { _ in
                     let st = status(m)
@@ -390,10 +388,10 @@ final class AudioRecorder: NSObject, ObservableObject {
                         .appendingPathComponent("ly_\(UUID().uuidString).m4a")
                     let settings: [String: Any] = [
                         AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
-                        AVSampleRateKey: 12000,
+                        AVSampleRateKey: 24000,
                         AVNumberOfChannelsKey: 1,
-                        AVEncoderBitRateKey: 16000,
-                        AVEncoderAudioQualityKey: AVAudioQuality.low.rawValue
+                        AVEncoderBitRateKey: 32000,
+                        AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
                     ]
                     let r = try AVAudioRecorder(url: u, settings: settings)
                     r.record()
