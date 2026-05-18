@@ -29,7 +29,8 @@ struct RootView: View {
                     if ble.status == .on || bypassBT {
                         Picker("", selection: $tab) {
                             Text("Radar").tag(0)
-                            Text("Chats").tag(1)
+                            Text(ble.unreadTotal > 0
+                                 ? "Chats (\(ble.unreadTotal))" : "Chats").tag(1)
                         }
                         .pickerStyle(.segmented)
                         .padding(.horizontal, 20)

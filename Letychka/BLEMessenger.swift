@@ -1,6 +1,7 @@
 import Foundation
 import CoreBluetooth
 import Combine
+import UserNotifications
 
 /// Anonymous, server-less, internet-less messaging over Bluetooth LE.
 /// Every device both advertises (peripheral) and scans (central). To chat,
@@ -27,8 +28,34 @@ final class BLEMessenger: NSObject, ObservableObject {
     @Published var names: [String: String] = [:]
     /// peerID -> percent of an incoming media transfer (nil when idle).
     @Published var incoming: [String: Int] = [:]
+    /// peerID -> count of unseen incoming messages.
+    @Published var unread: [String: Int] = [:]
+    /// peerID -> time we last heard "typing" from them (pruned after 5s).
+    @Published var typing: [String: Date] = [:]
+
+    /// The chat currently on screen, so its messages are not counted unread.
+    var activeChat: String?
+    private var typingPrune: Timer?
+    private var notifOK = false
 
     var poweredOn: Bool { status == .on }
+    var unreadTotal: Int { unread.values.reduce(0, +) }
+
+    func isTyping(_ peerID: String) -> Bool {
+        guard let t = typing[peerID] else { return false }
+        return Date().timeIntervalSince(t) < 5
+    }
+
+    func openChat(_ peerID: String) {
+        activeChat = peerID
+        if unread[peerID] != nil { unread[peerID] = nil; refreshBadge() }
+    }
+    func closeChat() { activeChat = nil }
+
+    private func refreshBadge() {
+        let n = unreadTotal
+        UNUserNotificationCenter.current().setBadgeCount(n)
+    }
 
     private var central: CBCentralManager!
     private var peripheral: CBPeripheralManager!
@@ -45,7 +72,43 @@ final class BLEMessenger: NSObject, ObservableObject {
         if central == nil {
             central = CBCentralManager(delegate: self, queue: .main)
             peripheral = CBPeripheralManager(delegate: self, queue: .main)
+            UNUserNotificationCenter.current()
+                .requestAuthorization(options: [.alert, .sound, .badge]) { ok, _ in
+                    DispatchQueue.main.async { self.notifOK = ok }
+                }
         }
+    }
+
+    func sendTyping(to peerID: String) {
+        enqueue([Frame.typingFrame()], to: peerID)
+    }
+
+    private func startTypingPrune() {
+        guard typingPrune == nil else { return }
+        typingPrune = Timer.scheduledTimer(withTimeInterval: 1,
+                                           repeats: true) { [weak self] _ in
+            guard let self else { return }
+            let now = Date()
+            self.typing = self.typing.filter { now.timeIntervalSince($0.value) < 5 }
+            if self.typing.isEmpty {
+                self.typingPrune?.invalidate(); self.typingPrune = nil
+            }
+        }
+    }
+
+    private func notify(_ m: ChatMessage) {
+        guard notifOK else { return }
+        let c = UNMutableNotificationContent()
+        c.title = names[m.peerID] ?? "Letychka"
+        switch m.kind {
+        case .text:  c.body = m.text
+        case .image: c.body = "Photo"
+        case .audio: c.body = "Voice message"
+        }
+        c.sound = .default
+        UNUserNotificationCenter.current().add(
+            UNNotificationRequest(identifier: UUID().uuidString,
+                                  content: c, trigger: nil))
     }
 
     func setNick(_ n: String) {
@@ -195,7 +258,13 @@ final class BLEMessenger: NSObject, ObservableObject {
     }
 
     private func append(_ m: ChatMessage) {
-        DispatchQueue.main.async { self.messages.append(m) }
+        DispatchQueue.main.async {
+            self.messages.append(m)
+            guard !m.mine, m.peerID != self.activeChat else { return }
+            self.unread[m.peerID, default: 0] += 1
+            UNUserNotificationCenter.current().setBadgeCount(self.unreadTotal)
+            self.notify(m)
+        }
     }
 
     // MARK: Receiving (reassembly)
@@ -255,6 +324,11 @@ final class BLEMessenger: NSObject, ObservableObject {
                                date: Date(),
                                kind: box.type == Frame.typeImage ? .image : .audio,
                                data: Data(box.buf), wireID: box.msgID))
+        case Frame.TYPING:
+            DispatchQueue.main.async {
+                self.typing[peerID] = Date()
+                self.startTypingPrune()
+            }
         case Frame.DEL:
             guard body.count >= 4 else { return }
             let mid = Frame.readU32(body, 0)
@@ -287,12 +361,21 @@ final class BLEMessenger: NSObject, ObservableObject {
         DispatchQueue.main.async {
             if !nick.isEmpty { self.names[id] = nick }
             if let i = self.peers.firstIndex(where: { $0.id == id }) {
-                self.peers[i].rssi = rssi
+                // Exponential smoothing so the radar blip glides instead of
+                // jumping on every noisy scan tick. rssi == 0 means "no new
+                // signal reading" (came in on a text/media frame), so keep
+                // the last smoothed distance.
+                if rssi != 0 {
+                    let old = self.peers[i].rssi
+                    self.peers[i].rssi = old == 0
+                        ? rssi
+                        : Int(Double(old) * 0.78 + Double(rssi) * 0.22)
+                }
                 self.peers[i].lastSeen = Date()
                 if !nick.isEmpty { self.peers[i].nick = nick }
             } else {
                 self.peers.append(Peer(id: id, nick: nick.isEmpty ? "Anon" : nick,
-                                       rssi: rssi, lastSeen: Date()))
+                                       rssi: rssi == 0 ? -65 : rssi, lastSeen: Date()))
             }
             // Drop peers not seen for a while.
             let cutoff = Date().addingTimeInterval(-20)

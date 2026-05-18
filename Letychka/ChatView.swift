@@ -13,6 +13,7 @@ struct ChatView: View {
     @StateObject private var player = AudioPlayer()
     @State private var notice: String?
     @State private var editing: ChatMessage?
+    @State private var lastTyped = Date.distantPast
 
     private var msgs: [ChatMessage] { ble.messages(with: peer.id) }
     private var receiving: Int? { ble.incoming[peer.id] }
@@ -56,6 +57,14 @@ struct ChatView: View {
                     .padding(.horizontal, 18).padding(.top, 6)
             }
 
+            if ble.isTyping(peer.id) {
+                Text("\(peer.nick) is typing...")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.accent)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 18).padding(.top, 6)
+            }
+
             if editing != nil {
                 HStack(spacing: 8) {
                     Image(systemName: "pencil")
@@ -77,7 +86,15 @@ struct ChatView: View {
         .background(Theme.bg(scheme).ignoresSafeArea())
         .navigationTitle(peer.nick)
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear { ble.connect(peer.id) }
+        .onAppear { ble.connect(peer.id); ble.openChat(peer.id) }
+        .onDisappear { ble.closeChat() }
+        .onChange(of: draft) { _, v in
+            guard !v.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+            if Date().timeIntervalSince(lastTyped) > 2 {
+                lastTyped = Date()
+                ble.sendTyping(to: peer.id)
+            }
+        }
         .onChange(of: photoItem) { _, item in
             guard let item else { return }
             Task {

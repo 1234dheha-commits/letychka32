@@ -71,6 +71,7 @@ enum Frame {
     static let END:   UInt8 = 0x04
     static let DEL:   UInt8 = 0x05
     static let EDIT:  UInt8 = 0x06
+    static let TYPING:UInt8 = 0x07
 
     static let typeImage: UInt8 = 1
     static let typeAudio: UInt8 = 2
@@ -114,6 +115,7 @@ enum Frame {
         var d = Data([EDIT]); d.append(u32(msgID)); d.append(Data(text.utf8))
         return d
     }
+    static func typingFrame() -> Data { Data([TYPING]) }
 
     /// Split a media blob into HEAD + CHUNK* + END frames.
     static func frames(for blob: Data, type: UInt8,

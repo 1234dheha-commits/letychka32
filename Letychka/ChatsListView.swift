@@ -106,6 +106,15 @@ struct ChatsListView: View {
                     .foregroundStyle(Theme.muted(scheme))
                     .lineLimit(1)
             }
+            let n = ble.unread[c.id] ?? 0
+            if n > 0 {
+                Text("\(n)")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(minWidth: 20, minHeight: 20)
+                    .padding(.horizontal, 5)
+                    .background(Theme.accent, in: Capsule())
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 11)

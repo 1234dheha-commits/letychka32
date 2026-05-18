@@ -17,8 +17,12 @@ struct RadarView: View {
         let t = CGFloat(clamped + 95) / 65.0          // 0 far .. 1 near
         return 0.90 - t * 0.78
     }
+    // Deterministic angle from the id (FNV-1a) so a peer keeps the same
+    // bearing across app launches and re-renders, instead of teleporting.
     private func angle(for id: String) -> CGFloat {
-        CGFloat(abs(id.hashValue) % 360) * .pi / 180
+        var h: UInt64 = 1469598103934665603
+        for b in id.utf8 { h = (h ^ UInt64(b)) &* 1099511628211 }
+        return CGFloat(h % 360) * .pi / 180
     }
 
     var body: some View {
@@ -64,11 +68,14 @@ struct RadarView: View {
                     Button { onTapPeer(peer) } label: {
                         VStack(spacing: 4) {
                             ZStack {
-                                Circle().fill(Theme.accent.opacity(0.25))
-                                    .frame(width: 26, height: 26)
+                                Circle().fill(Theme.accent.opacity(0.22))
+                                    .frame(width: 30, height: 30)
                                 Circle().fill(Theme.accent)
-                                    .frame(width: 13, height: 13)
+                                    .frame(width: 24, height: 24)
                                     .shadow(color: Theme.accent.opacity(0.9), radius: 7)
+                                Text(String(peer.nick.prefix(1)).uppercased())
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundStyle(.white)
                             }
                             Text(peer.nick)
                                 .font(.system(size: 11, weight: .semibold))
@@ -81,10 +88,15 @@ struct RadarView: View {
                     }
                     .buttonStyle(.plain)
                     .position(x: c.x + cos(a) * r, y: c.y - sin(a) * r)
+                    // Glide to a new distance instead of snapping each tick.
+                    .animation(.easeInOut(duration: 0.9), value: r)
+                    .transition(.scale.combined(with: .opacity))
                 }
             }
             .frame(width: geo.size.width, height: geo.size.height)
             .clipped()
+            // Fade/scale peers in and out smoothly when they appear or leave.
+            .animation(.easeInOut(duration: 0.55), value: ble.peers)
         }
         .onAppear {
             withAnimation(.linear(duration: 3.2).repeatForever(autoreverses: false)) {
