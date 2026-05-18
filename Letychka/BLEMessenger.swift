@@ -10,6 +10,10 @@ import UserNotifications
 /// small media (tiny photos, short voice notes) sent as reassembled frames.
 final class BLEMessenger: NSObject, ObservableObject {
 
+    /// One shared instance: started from the app delegate at launch so iOS
+    /// can relaunch us in the background for Bluetooth state restoration.
+    static let shared = BLEMessenger()
+
     // Valid 128-bit UUIDs: 8-4-4-4-12 hex (32 digits total). A malformed
     // string makes CBUUID throw and crashes the app on Bluetooth start.
     static let serviceUUID = CBUUID(string: "4C455459-3332-4D53-4731-000000000001")
@@ -43,6 +47,9 @@ final class BLEMessenger: NSObject, ObservableObject {
     private var typingPrune: Timer?
     private var pruneTimer: Timer?
     private var notifOK = false
+    /// True once iOS handed our characteristic back via state restoration,
+    /// so we must not tear the service down and re-add it.
+    private var restoredService = false
 
     var poweredOn: Bool { status == .on }
     var unreadTotal: Int { unread.values.reduce(0, +) }
@@ -209,8 +216,17 @@ final class BLEMessenger: NSObject, ObservableObject {
     func start() {
         loadStore()
         if central == nil {
-            central = CBCentralManager(delegate: self, queue: .main)
-            peripheral = CBPeripheralManager(delegate: self, queue: .main)
+            // Restore identifiers let iOS relaunch the app in the background
+            // on Bluetooth activity (a connected/subscribed peer sent
+            // something) so we can post a real notification while the app
+            // is not on screen. Does NOT work if the user force-quits the
+            // app (an iOS rule, and there is no server to push from).
+            central = CBCentralManager(delegate: self, queue: .main,
+                options: [CBCentralManagerOptionRestoreIdentifierKey:
+                            "letychka.central"])
+            peripheral = CBPeripheralManager(delegate: self, queue: .main,
+                options: [CBPeripheralManagerOptionRestoreIdentifierKey:
+                            "letychka.peripheral"])
             UNUserNotificationCenter.current()
                 .requestAuthorization(options: [.alert, .sound, .badge]) { ok, _ in
                     DispatchQueue.main.async { self.notifOK = ok }
@@ -648,6 +664,24 @@ final class BLEMessenger: NSObject, ObservableObject {
 // MARK: - Central (scanning + connecting)
 
 extension BLEMessenger: CBCentralManagerDelegate {
+    func centralManager(_ m: CBCentralManager,
+                         willRestoreState dict: [String: Any]) {
+        // Background relaunch: re-attach the peripherals iOS kept connected
+        // so their notifications keep flowing (and wake us for a banner).
+        if let ps = dict[CBCentralManagerRestoredStatePeripheralsKey]
+            as? [CBPeripheral] {
+            for p in ps {
+                p.delegate = self
+                let id = stable(for: p)
+                discovered[id] = p
+                if p.state == .connected {
+                    connected[id] = p
+                    p.discoverServices([Self.serviceUUID])
+                }
+            }
+        }
+    }
+
     func centralManagerDidUpdateState(_ m: CBCentralManager) {
         let s: BTStatus
         switch m.state {
@@ -761,8 +795,31 @@ extension BLEMessenger: CBPeripheralDelegate {
 // MARK: - Peripheral (advertising + receiving)
 
 extension BLEMessenger: CBPeripheralManagerDelegate {
+    func peripheralManager(_ pm: CBPeripheralManager,
+                           willRestoreState dict: [String: Any]) {
+        // iOS relaunched us in the background and is handing back our
+        // service/characteristic. Keep it instead of recreating (which
+        // would drop existing subscribers).
+        if let svcs = dict[CBPeripheralManagerRestoredStateServicesKey]
+            as? [CBMutableService] {
+            for s in svcs where s.uuid == Self.serviceUUID {
+                if let c = s.characteristics?.first(where: {
+                    $0.uuid == Self.charUUID
+                }) as? CBMutableCharacteristic {
+                    localChar = c
+                    restoredService = true
+                }
+            }
+        }
+    }
+
     func peripheralManagerDidUpdateState(_ pm: CBPeripheralManager) {
         guard pm.state == .poweredOn else { return }
+        if restoredService, localChar != nil {
+            // Service already live from restoration; just advertise again.
+            restartAdvertising()
+            return
+        }
         let c = CBMutableCharacteristic(
             type: Self.charUUID,
             properties: [.write, .notify],

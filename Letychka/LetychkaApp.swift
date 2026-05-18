@@ -11,6 +11,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate,
                      didFinishLaunchingWithOptions launchOptions:
                      [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = self
+        // Start Bluetooth at launch (incl. background relaunch by iOS for
+        // state restoration) so messages can arrive and notify off-screen.
+        BLEMessenger.shared.start()
         return true
     }
     func userNotificationCenter(_ center: UNUserNotificationCenter,

@@ -4,7 +4,7 @@ import PhotosUI
 import AuthenticationServices
 
 struct RootView: View {
-    @StateObject private var ble = BLEMessenger()
+    @StateObject private var ble = BLEMessenger.shared
     @AppStorage(AppTheme.key) private var themeMode = "dark"
     @Environment(\.colorScheme) private var scheme
     @State private var nickField = ""
