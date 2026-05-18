@@ -12,6 +12,7 @@ struct ChatView: View {
     @StateObject private var recorder = AudioRecorder()
     @StateObject private var player = AudioPlayer()
     @State private var notice: String?
+    @State private var editing: ChatMessage?
 
     private var msgs: [ChatMessage] { ble.messages(with: peer.id) }
     private var receiving: Int? { ble.incoming[peer.id] }
@@ -25,6 +26,7 @@ struct ChatView: View {
                             HStack {
                                 if m.mine { Spacer(minLength: 40) }
                                 bubble(m)
+                                    .contextMenu { menu(m) }
                                 if !m.mine { Spacer(minLength: 40) }
                             }
                             .id(m.id)
@@ -52,6 +54,22 @@ struct ChatView: View {
                     .foregroundStyle(.red)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 18).padding(.top, 6)
+            }
+
+            if editing != nil {
+                HStack(spacing: 8) {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.accent)
+                    Text("Editing message")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.muted(scheme))
+                    Spacer()
+                    Button("Cancel") { editing = nil; draft = "" }
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Theme.accent)
+                }
+                .padding(.horizontal, 18).padding(.top, 6)
             }
 
             inputBar
@@ -99,6 +117,23 @@ struct ChatView: View {
             }
         case .audio:
             audioBubble(m)
+        }
+    }
+
+    @ViewBuilder
+    private func menu(_ m: ChatMessage) -> some View {
+        if m.mine && m.kind == .text {
+            Button {
+                editing = m
+                draft = m.text
+            } label: { Label("Edit", systemImage: "pencil") }
+        }
+        Button(role: .destructive) {
+            if editing?.id == m.id { editing = nil; draft = "" }
+            ble.deleteMessage(m)
+        } label: {
+            Label(m.mine ? "Delete for everyone" : "Delete for me",
+                  systemImage: "trash")
         }
     }
 
@@ -168,10 +203,17 @@ struct ChatView: View {
                 .background(Theme.surface(scheme))
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             Button {
-                ble.send(draft, to: peer.id)
+                let t = draft.trimmingCharacters(in: .whitespaces)
+                guard !t.isEmpty else { return }
+                if let e = editing {
+                    ble.editMessage(e, newText: draft)
+                    editing = nil
+                } else {
+                    ble.send(draft, to: peer.id)
+                }
                 draft = ""
             } label: {
-                Image(systemName: "arrow.up")
+                Image(systemName: editing == nil ? "arrow.up" : "checkmark")
                     .font(.system(size: 17, weight: .bold))
                     .foregroundStyle(.white)
                     .frame(width: 42, height: 42)

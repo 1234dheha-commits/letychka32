@@ -16,27 +16,31 @@ enum MsgKind: Equatable { case text, image, audio }
 
 /// One chat message. Ephemeral: kept only in memory for the session.
 /// `data` holds the JPEG (image) or m4a (audio) payload when not text.
+/// `wireID` is a shared id sent over the air so delete/edit can target the
+/// same message on the other phone too (like a normal messenger).
 struct ChatMessage: Identifiable, Equatable {
     let id = UUID()
     let peerID: String
     let mine: Bool
     let kind: MsgKind
-    let text: String
+    var text: String
     let data: Data?
     let date: Date
+    let wireID: UInt32
 
     init(peerID: String, mine: Bool, text: String, date: Date,
-         kind: MsgKind = .text, data: Data? = nil) {
+         kind: MsgKind = .text, data: Data? = nil, wireID: UInt32 = 0) {
         self.peerID = peerID
         self.mine = mine
         self.text = text
         self.date = date
         self.kind = kind
         self.data = data
+        self.wireID = wireID
     }
 }
 
-/// Wire format for a single text packet: "nick\u{1}text" (unit separator).
+/// Wire format for a single text payload: "nick\u{1}text" (unit separator).
 enum Wire {
     static let sep: Character = "\u{1}"
     static func encode(nick: String, text: String) -> Data {
@@ -51,24 +55,28 @@ enum Wire {
 }
 
 /// Tiny framed protocol so larger payloads (small photos, short voice notes)
-/// can be split across many small BLE packets and reassembled. BLE is slow,
-/// so media is heavily compressed and transfers show progress.
+/// can be split across many small BLE packets and reassembled, and so that
+/// delete/edit can be propagated to the other phone.
 ///
-///   TEXT  : [0x01][utf8 "nick\u{1}text"]
-///   HEAD  : [0x02][4 id][4 total][1 type(1=jpeg,2=m4a)][utf8 nick]
-///   CHUNK : [0x03][4 id][4 offset][raw bytes]
-///   END   : [0x04][4 id]
+///   TEXT  : [0x01][4 msgID][utf8 "nick\u{1}text"]
+///   HEAD  : [0x02][4 xferID][4 total][1 type(1=jpeg,2=m4a)][4 msgID][utf8 nick]
+///   CHUNK : [0x03][4 xferID][4 offset][raw bytes]
+///   END   : [0x04][4 xferID]
+///   DEL   : [0x05][4 msgID]
+///   EDIT  : [0x06][4 msgID][utf8 newText]
 enum Frame {
     static let TEXT:  UInt8 = 0x01
     static let HEAD:  UInt8 = 0x02
     static let CHUNK: UInt8 = 0x03
     static let END:   UInt8 = 0x04
+    static let DEL:   UInt8 = 0x05
+    static let EDIT:  UInt8 = 0x06
 
     static let typeImage: UInt8 = 1
     static let typeAudio: UInt8 = 2
 
-    /// Raw bytes of media per CHUNK. Kept small so one frame fits the BLE
-    /// ATT payload on any modern iPhone (negotiated MTU is >= ~185).
+    /// Raw media bytes per CHUNK. Small so one frame fits the BLE ATT
+    /// payload on any modern iPhone (negotiated MTU is >= ~185).
     static let chunkBytes = 160
 
     static func u32(_ v: UInt32) -> Data {
@@ -80,35 +88,47 @@ enum Frame {
         return UInt32(b[i]) << 24 | UInt32(b[i+1]) << 16
              | UInt32(b[i+2]) << 8 | UInt32(b[i+3])
     }
+    static func newID() -> UInt32 { UInt32.random(in: 1...UInt32.max) }
 
-    static func text(nick: String, text: String) -> Data {
-        var d = Data([TEXT]); d.append(Wire.encode(nick: nick, text: text)); return d
+    static func text(nick: String, text: String, msgID: UInt32) -> Data {
+        var d = Data([TEXT]); d.append(u32(msgID))
+        d.append(Wire.encode(nick: nick, text: text)); return d
     }
-    static func head(id: UInt32, total: Int, type: UInt8, nick: String) -> Data {
+    static func head(xfer: UInt32, total: Int, type: UInt8,
+                     msgID: UInt32, nick: String) -> Data {
         var d = Data([HEAD])
-        d.append(u32(id)); d.append(u32(UInt32(total))); d.append(type)
-        d.append(Data(nick.utf8)); return d
+        d.append(u32(xfer)); d.append(u32(UInt32(total))); d.append(type)
+        d.append(u32(msgID)); d.append(Data(nick.utf8)); return d
     }
-    static func chunk(id: UInt32, offset: Int, bytes: Data) -> Data {
-        var d = Data([CHUNK]); d.append(u32(id)); d.append(u32(UInt32(offset)))
+    static func chunk(xfer: UInt32, offset: Int, bytes: Data) -> Data {
+        var d = Data([CHUNK]); d.append(u32(xfer)); d.append(u32(UInt32(offset)))
         d.append(bytes); return d
     }
-    static func end(id: UInt32) -> Data {
-        var d = Data([END]); d.append(u32(id)); return d
+    static func end(xfer: UInt32) -> Data {
+        var d = Data([END]); d.append(u32(xfer)); return d
+    }
+    static func del(msgID: UInt32) -> Data {
+        var d = Data([DEL]); d.append(u32(msgID)); return d
+    }
+    static func edit(msgID: UInt32, text: String) -> Data {
+        var d = Data([EDIT]); d.append(u32(msgID)); d.append(Data(text.utf8))
+        return d
     }
 
     /// Split a media blob into HEAD + CHUNK* + END frames.
-    static func frames(for blob: Data, type: UInt8, nick: String) -> [Data] {
-        let id = UInt32.random(in: 1...UInt32.max)
-        var out = [head(id: id, total: blob.count, type: type, nick: nick)]
+    static func frames(for blob: Data, type: UInt8,
+                       msgID: UInt32, nick: String) -> [Data] {
+        let xfer = newID()
+        var out = [head(xfer: xfer, total: blob.count, type: type,
+                        msgID: msgID, nick: nick)]
         var off = 0
         while off < blob.count {
-            let end = min(off + chunkBytes, blob.count)
-            out.append(chunk(id: id, offset: off,
-                             bytes: blob.subdata(in: off..<end)))
-            off = end
+            let e = min(off + chunkBytes, blob.count)
+            out.append(chunk(xfer: xfer, offset: off,
+                             bytes: blob.subdata(in: off..<e)))
+            off = e
         }
-        out.append(self.end(id: id))
+        out.append(end(xfer: xfer))
         return out
     }
 }

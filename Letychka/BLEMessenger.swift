@@ -112,17 +112,45 @@ final class BLEMessenger: NSObject, ObservableObject {
     func send(_ text: String, to peerID: String) {
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty else { return }
-        enqueue([Frame.text(nick: nick, text: String(t.prefix(240)))], to: peerID)
-        append(ChatMessage(peerID: peerID, mine: true, text: t, date: Date()))
+        let mid = Frame.newID()
+        enqueue([Frame.text(nick: nick, text: String(t.prefix(240)), msgID: mid)],
+                to: peerID)
+        append(ChatMessage(peerID: peerID, mine: true, text: t, date: Date(),
+                           wireID: mid))
     }
 
     /// Send a compressed blob (small JPEG or short m4a) split into frames.
     func sendMedia(_ blob: Data, image: Bool, to peerID: String) {
         guard !blob.isEmpty else { return }
         let type = image ? Frame.typeImage : Frame.typeAudio
-        enqueue(Frame.frames(for: blob, type: type, nick: nick), to: peerID)
+        let mid = Frame.newID()
+        enqueue(Frame.frames(for: blob, type: type, msgID: mid, nick: nick),
+                to: peerID)
         append(ChatMessage(peerID: peerID, mine: true, text: "", date: Date(),
-                           kind: image ? .image : .audio, data: blob))
+                           kind: image ? .image : .audio, data: blob, wireID: mid))
+    }
+
+    /// Delete locally; if it is our message, also tell the other phone.
+    func deleteMessage(_ m: ChatMessage) {
+        DispatchQueue.main.async { self.messages.removeAll { $0.id == m.id } }
+        if m.mine, m.wireID != 0 {
+            enqueue([Frame.del(msgID: m.wireID)], to: m.peerID)
+        }
+    }
+
+    /// Edit our own text message and propagate the new text to the other phone.
+    func editMessage(_ m: ChatMessage, newText: String) {
+        let t = newText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard m.mine, m.kind == .text, !t.isEmpty else { return }
+        let nt = String(t.prefix(240))
+        DispatchQueue.main.async {
+            if let i = self.messages.firstIndex(where: { $0.id == m.id }) {
+                self.messages[i].text = nt
+            }
+        }
+        if m.wireID != 0 {
+            enqueue([Frame.edit(msgID: m.wireID, text: nt)], to: m.peerID)
+        }
     }
 
     private func enqueue(_ frames: [Data], to peerID: String) {
@@ -178,6 +206,7 @@ final class BLEMessenger: NSObject, ObservableObject {
         var buf: [UInt8]
         var received: Int
         let peer: String
+        let msgID: UInt32
     }
     private var inbox: [UInt32: Inbox] = [:]
 
@@ -186,43 +215,62 @@ final class BLEMessenger: NSObject, ObservableObject {
         let body = [UInt8](data.dropFirst())
         switch kind {
         case Frame.TEXT:
-            guard let msg = Wire.decode(Data(body)) else { return }
+            guard body.count >= 4 else { return }
+            let mid = Frame.readU32(body, 0)
+            guard let msg = Wire.decode(Data(body[4...])) else { return }
             if !msg.nick.isEmpty { upsertPeer(id: peerID, nick: msg.nick, rssi: 0) }
             append(ChatMessage(peerID: peerID, mine: false,
-                               text: msg.text, date: Date()))
+                               text: msg.text, date: Date(), wireID: mid))
         case Frame.HEAD:
-            guard body.count >= 9 else { return }
-            let id = Frame.readU32(body, 0)
+            guard body.count >= 13 else { return }
+            let xfer = Frame.readU32(body, 0)
             let total = Int(Frame.readU32(body, 4))
             let mtype = body[8]
-            let nm = String(bytes: body[9...], encoding: .utf8) ?? ""
+            let mid = Frame.readU32(body, 9)
+            let nm = String(bytes: body[13...], encoding: .utf8) ?? ""
             if !nm.isEmpty { upsertPeer(id: peerID, nick: nm, rssi: 0) }
             guard total > 0, total <= 3_000_000 else { return }   // sanity cap
-            inbox[id] = Inbox(type: mtype, total: total,
-                              buf: [UInt8](repeating: 0, count: total),
-                              received: 0, peer: peerID)
+            inbox[xfer] = Inbox(type: mtype, total: total,
+                                buf: [UInt8](repeating: 0, count: total),
+                                received: 0, peer: peerID, msgID: mid)
             setIncoming(peerID, 0)
         case Frame.CHUNK:
             guard body.count >= 8, var box = inbox[Frame.readU32(body, 0)] else { return }
-            let id = Frame.readU32(body, 0)
+            let xfer = Frame.readU32(body, 0)
             let off = Int(Frame.readU32(body, 4))
             let payload = body[8...]
             let n = payload.count
             guard n > 0, off >= 0, off + n <= box.total else { return }
             box.buf.replaceSubrange(off..<off+n, with: payload)
             box.received += n
-            inbox[id] = box
+            inbox[xfer] = box
             setIncoming(peerID, min(100, box.received * 100 / max(1, box.total)))
         case Frame.END:
             guard body.count >= 4 else { return }
-            let id = Frame.readU32(body, 0)
-            guard let box = inbox[id] else { return }
-            inbox[id] = nil
+            let xfer = Frame.readU32(body, 0)
+            guard let box = inbox[xfer] else { return }
+            inbox[xfer] = nil
             clearIncoming(peerID)
             append(ChatMessage(peerID: box.peer, mine: false, text: "",
                                date: Date(),
                                kind: box.type == Frame.typeImage ? .image : .audio,
-                               data: Data(box.buf)))
+                               data: Data(box.buf), wireID: box.msgID))
+        case Frame.DEL:
+            guard body.count >= 4 else { return }
+            let mid = Frame.readU32(body, 0)
+            DispatchQueue.main.async {
+                self.messages.removeAll { $0.wireID == mid && $0.peerID == peerID }
+            }
+        case Frame.EDIT:
+            guard body.count >= 4 else { return }
+            let mid = Frame.readU32(body, 0)
+            let nt = String(bytes: body[4...], encoding: .utf8) ?? ""
+            guard !nt.isEmpty else { return }
+            DispatchQueue.main.async {
+                if let i = self.messages.firstIndex(where: {
+                    $0.wireID == mid && $0.peerID == peerID
+                }) { self.messages[i].text = nt }
+            }
         default:
             return
         }
