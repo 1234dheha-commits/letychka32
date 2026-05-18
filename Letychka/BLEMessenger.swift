@@ -228,6 +228,13 @@ final class BLEMessenger: NSObject, ObservableObject {
                         self.peers.contains { $0.id == k }
                     }
                 }
+                // Abandon stalled incoming media (peer left mid-transfer) so
+                // the "Receiving media %" bar does not hang forever.
+                let stale = Date().addingTimeInterval(-20)
+                for (xfer, box) in self.inbox where box.ts < stale {
+                    self.inbox[xfer] = nil
+                    self.clearIncoming(box.peer)
+                }
             }
         }
     }
@@ -413,10 +420,11 @@ final class BLEMessenger: NSObject, ObservableObject {
         guard var q = sendQueues[peerID], !q.isEmpty else { return }
 
         // Central on this link: ordered writes, one outstanding at a time.
+        // The frame stays at the head of the queue until didWriteValueFor
+        // confirms it (no error). A failed write is retried, not dropped.
         if let p = connected[peerID], let c = outChar[peerID] {
             if inflight.contains(peerID) { return }
-            let frame = q.removeFirst()
-            sendQueues[peerID] = q
+            guard let frame = q.first else { return }
             inflight.insert(peerID)
             p.writeValue(frame, for: c, type: .withResponse)
             return
@@ -466,6 +474,7 @@ final class BLEMessenger: NSObject, ObservableObject {
         var received: Int
         let peer: String
         let msgID: UInt32
+        var ts: Date            // last activity, for stalled-transfer cleanup
     }
     private var inbox: [UInt32: Inbox] = [:]
 
@@ -487,6 +496,7 @@ final class BLEMessenger: NSObject, ObservableObject {
             append(ChatMessage(peerID: sid, mine: false,
                                text: msg.text, date: Date(),
                                wireID: mid, replyTo: rep))
+            if mid != 0 { enqueue([Frame.ack(wireID: mid)], to: sid) }
         case Frame.HEAD:
             guard body.count >= 13 else { return }
             let xfer = Frame.readU32(body, 0)
@@ -498,7 +508,8 @@ final class BLEMessenger: NSObject, ObservableObject {
             guard total > 0, total <= 3_000_000 else { return }   // sanity cap
             inbox[xfer] = Inbox(type: mtype, total: total,
                                 buf: [UInt8](repeating: 0, count: total),
-                                received: 0, peer: sid, msgID: mid)
+                                received: 0, peer: sid, msgID: mid,
+                                ts: Date())
             setIncoming(sid, 0)
         case Frame.CHUNK:
             guard body.count >= 8, var box = inbox[Frame.readU32(body, 0)] else { return }
@@ -509,6 +520,7 @@ final class BLEMessenger: NSObject, ObservableObject {
             guard n > 0, off >= 0, off + n <= box.total else { return }
             box.buf.replaceSubrange(off..<off+n, with: payload)
             box.received += n
+            box.ts = Date()
             inbox[xfer] = box
             setIncoming(sid, min(100, box.received * 100 / max(1, box.total)))
         case Frame.END:
@@ -521,6 +533,7 @@ final class BLEMessenger: NSObject, ObservableObject {
                                date: Date(),
                                kind: box.type == Frame.typeImage ? .image : .audio,
                                data: Data(box.buf), wireID: box.msgID))
+            if box.msgID != 0 { enqueue([Frame.ack(wireID: box.msgID)], to: sid) }
         case Frame.TYPING:
             DispatchQueue.main.async {
                 self.typing[sid] = Date()
@@ -569,6 +582,17 @@ final class BLEMessenger: NSObject, ObservableObject {
             }
             appendRoom(ChatMessage(peerID: sid, mine: false,
                                    text: msg.text, date: Date()))
+        case Frame.ACK:
+            guard body.count >= 4 else { return }
+            let aid = Frame.readU32(body, 0)
+            DispatchQueue.main.async {
+                if let i = self.messages.firstIndex(where: {
+                    $0.mine && $0.wireID == aid && $0.peerID == sid
+                }), self.messages[i].delivered != true {
+                    self.messages[i].delivered = true
+                    self.persist()
+                }
+            }
         default:
             return
         }
@@ -675,6 +699,17 @@ extension BLEMessenger: CBCentralManagerDelegate {
         connected[id] = nil
         outChar[id] = nil
         inflight.remove(id)
+        // Queued frames are kept on purpose: they flush automatically if the
+        // person comes back into range (didDiscoverCharacteristicsFor pumps).
+    }
+
+    func centralManager(_ m: CBCentralManager, didFailToConnect p: CBPeripheral,
+                         error: Error?) {
+        let id = stable(for: p)
+        connected[id] = nil
+        outChar[id] = nil
+        inflight.remove(id)
+        // Not reachable now. Frames stay queued and retry when rediscovered.
     }
 }
 
@@ -707,7 +742,19 @@ extension BLEMessenger: CBPeripheralDelegate {
                     error: Error?) {
         let id = stable(for: p)
         inflight.remove(id)
-        pump(id)   // send the next queued frame
+        if error == nil {
+            // Confirmed: drop the head frame and continue.
+            if var q = sendQueues[id], !q.isEmpty {
+                q.removeFirst(); sendQueues[id] = q
+            }
+            pump(id)
+        } else {
+            // Not delivered. Keep the frame and retry shortly (or it flushes
+            // when the peer reconnects). Avoid a hot loop.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+                self?.pump(id)
+            }
+        }
     }
 }
 

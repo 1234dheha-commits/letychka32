@@ -29,6 +29,10 @@ struct ChatMessage: Identifiable, Equatable, Codable {
     var reaction: String?
     /// wireID of the message this one replies to (0/nil = not a reply).
     var replyTo: UInt32?
+    /// Our outgoing message was actually received by the other phone (ACK).
+    /// Optional so an older saved chats.json (no such key) still decodes
+    /// instead of wiping the user's history.
+    var delivered: Bool?
 
     init(peerID: String, mine: Bool, text: String, date: Date,
          kind: MsgKind = .text, data: Data? = nil, wireID: UInt32 = 0,
@@ -89,6 +93,7 @@ enum Wire {
 ///   REACT   9 : [4 msgID][utf8 emoji]    (emoji "" clears it)
 ///   SEEN   10 : [4 lastWireID]           (read receipt up to that id)
 ///   ROOM   11 : [utf8 "nick\u{1}text"]   (shared nearby room broadcast)
+///   ACK    12 : [4 wireID]               (this message actually arrived)
 enum Frame {
     static let TEXT:    UInt8 = 0x01
     static let HEAD:    UInt8 = 0x02
@@ -101,6 +106,7 @@ enum Frame {
     static let REACT:   UInt8 = 0x09
     static let SEEN:    UInt8 = 0x0A
     static let ROOM:    UInt8 = 0x0B
+    static let ACK:     UInt8 = 0x0C
 
     static let typeImage: UInt8 = 1
     static let typeAudio: UInt8 = 2
@@ -142,6 +148,7 @@ enum Frame {
     static func room(nick: String, text: String) -> Data {
         wrap(ROOM, Wire.encode(nick: nick, text: text))
     }
+    static func ack(wireID: UInt32) -> Data { wrap(ACK, u32(wireID)) }
     static func head(xfer: UInt32, total: Int, type: UInt8,
                      msgID: UInt32, nick: String) -> Data {
         var p = u32(xfer); p.append(u32(UInt32(total))); p.append(type)

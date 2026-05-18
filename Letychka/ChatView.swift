@@ -168,14 +168,31 @@ struct ChatView: View {
                             .offset(x: m.mine ? -8 : 8, y: 9)
                     }
                 }
-            if m.mine, m.id == lastMineID, m.wireID != 0,
-               let up = ble.seenUpTo[peer.id], m.wireID <= up {
-                Text("Seen")
-                    .font(.system(size: 11))
-                    .foregroundStyle(Theme.muted(scheme))
-                    .padding(.trailing, 4)
+            if m.mine, m.id == lastMineID {
+                TimelineView(.periodic(from: .now, by: 5)) { _ in
+                    let st = status(m)
+                    Text(st.0)
+                        .font(.system(size: 11))
+                        .foregroundStyle(st.1 ? Color.red.opacity(0.85)
+                                              : Theme.muted(scheme))
+                        .padding(.trailing, 4)
+                }
             }
         }
+    }
+
+    /// (label, isProblem) for our last message: Seen / Delivered /
+    /// Sending / Not delivered (honest about BLE: it only sends when the
+    /// other person is actually in range).
+    private func status(_ m: ChatMessage) -> (String, Bool) {
+        if m.wireID != 0, (ble.seenUpTo[peer.id] ?? 0) >= m.wireID {
+            return ("Seen", false)
+        }
+        if m.delivered == true { return ("Delivered", false) }
+        if Date().timeIntervalSince(m.date) > 25 {
+            return ("Not delivered. Will send when they are nearby.", true)
+        }
+        return ("Sending...", false)
     }
 
     // MARK: Bubbles
