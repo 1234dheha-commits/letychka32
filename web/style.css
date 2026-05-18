@@ -1,0 +1,144 @@
+:root{
+  --bg:#000; --bg2:#0b0b0e;
+  --text:#fff; --muted:rgba(255,255,255,.60); --faint:rgba(255,255,255,.40);
+  --line:rgba(255,255,255,.10); --card:rgba(255,255,255,.03);
+  --accent:#8B5CFF;
+  color-scheme:dark;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg); color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Inter","Helvetica Neue",Arial,sans-serif;
+  line-height:1.6; -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+}
+a{color:inherit;text-decoration:none}
+img{max-width:100%}
+.wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+
+/* Radar logo chip */
+.logo{width:30px;height:30px;border-radius:8px;flex:none;display:block}
+.logo.lg{width:40px;height:40px;border-radius:11px}
+
+/* Nav */
+.nav{position:sticky;top:0;z-index:50;backdrop-filter:saturate(140%) blur(16px);
+  background:rgba(0,0,0,.6);border-bottom:1px solid var(--line)}
+.nav .wrap{display:flex;align-items:center;justify-content:space-between;height:64px}
+.brand{display:flex;align-items:center;gap:11px;font-weight:600;font-size:17px;letter-spacing:-.01em}
+.navlinks{display:flex;align-items:center;gap:28px;font-size:14px;color:var(--muted)}
+.navlinks a:hover{color:#fff}
+.btn{display:inline-flex;align-items:center;border-radius:12px;font-weight:600;
+  padding:12px 22px;font-size:14px;transition:opacity .15s ease;white-space:nowrap}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-primary:hover{opacity:.88}
+.nav .btn{padding:9px 18px}
+
+/* Hero */
+.hero .wrap{display:grid;grid-template-columns:1.05fr .95fr;gap:56px;align-items:center;
+  padding:96px 24px 104px}
+.eyebrow{display:inline-block;font-weight:600;font-size:13px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--faint);margin-bottom:18px}
+.badge{display:inline-block;padding:6px 13px;border:1px solid var(--line);border-radius:999px;
+  font-size:12.5px;color:var(--muted);margin-bottom:22px}
+h1{font-size:58px;font-weight:800;letter-spacing:-.035em;line-height:1.05;color:#fff}
+.lead{margin-top:20px;font-size:18px;color:var(--muted);max-width:520px}
+.cta-row{margin-top:34px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.cta-sub{font-size:13.5px;color:var(--faint)}
+.rating{margin-top:22px;font-size:14px;color:var(--muted)}
+
+/* Phone + radar mock */
+.phone{justify-self:center;width:280px;height:560px;border-radius:44px;
+  background:#141416;border:1px solid rgba(255,255,255,.10);
+  box-shadow:0 30px 80px rgba(0,0,0,.6);padding:13px;position:relative}
+.phone:before{content:"";position:absolute;top:15px;left:50%;transform:translateX(-50%);
+  width:92px;height:24px;background:#000;border-radius:0 0 14px 14px;z-index:3}
+.screen{width:100%;height:100%;border-radius:33px;overflow:hidden;
+  background:#000;display:flex;flex-direction:column;align-items:center}
+.radar{position:relative;width:210px;height:210px;margin:60px auto 8px;border-radius:50%;
+  border:1px solid var(--line);
+  background:radial-gradient(circle at 50% 50%,rgba(139,92,255,.16),transparent 62%)}
+.radar i{position:absolute;border:1px solid rgba(139,92,255,.32);border-radius:50%}
+.radar i.r1{inset:14%}
+.radar i.r2{inset:30%}
+.radar .dot{position:absolute;left:50%;top:50%;width:14px;height:14px;border:0;
+  border-radius:50%;background:var(--accent);box-shadow:0 0 16px var(--accent);
+  transform:translate(-50%,-50%)}
+.radar .blip{position:absolute;width:11px;height:11px;border:0;border-radius:50%;
+  background:#fff;box-shadow:0 0 10px rgba(255,255,255,.6)}
+.radar .b1{left:70%;top:30%}
+.radar .b2{left:33%;top:62%}
+.scr-msgs{width:100%;padding:14px 16px 20px;display:flex;flex-direction:column;gap:9px}
+.bub{max-width:78%;padding:10px 13px;border-radius:15px;font-size:13.5px;line-height:1.4}
+.bub.in{align-self:flex-start;background:rgba(255,255,255,.07);color:#fff;border-bottom-left-radius:5px}
+.bub.out{align-self:flex-end;background:var(--accent);color:#fff;border-bottom-right-radius:5px}
+
+/* Sections */
+.section{padding:104px 0}
+.section.tight{padding:80px 0}
+.kicker{text-align:center;color:var(--faint);font-weight:600;font-size:13px;
+  letter-spacing:.12em;text-transform:uppercase;margin-bottom:14px}
+h2{font-size:40px;font-weight:800;letter-spacing:-.03em;text-align:center;line-height:1.1;color:#fff}
+.section .intro{text-align:center;color:var(--muted);max-width:560px;margin:16px auto 0;font-size:16.5px}
+
+/* Feature grid */
+.bento{margin-top:56px;display:grid;grid-template-columns:repeat(6,1fr);gap:14px}
+.tile{border-radius:18px;padding:28px;background:var(--card);border:1px solid var(--line)}
+.tile h3{font-size:18px;font-weight:700;letter-spacing:-.01em;margin-bottom:8px}
+.tile p{font-size:14.5px;color:var(--muted)}
+.c-span3{grid-column:span 3}.c-span2{grid-column:span 2}.c-span6{grid-column:span 6}
+
+/* CTA band */
+.band{border-radius:22px;text-align:center;padding:64px 24px;
+  border:1px solid var(--line);background:var(--bg2)}
+.band h2{font-size:34px}
+.band .btn{margin-top:26px}
+
+/* Article (privacy / support) */
+.article{max-width:740px;margin:0 auto;padding:64px 24px 100px}
+.article h1{font-size:38px;line-height:1.12;margin-bottom:8px;letter-spacing:-.02em}
+.article .meta{color:var(--faint);font-size:14px;margin-bottom:36px}
+.article h2{font-size:19px;text-align:left;margin:34px 0 10px;color:#fff;font-weight:700}
+.article p{color:rgba(255,255,255,.78);font-size:15.5px;margin-bottom:12px}
+.article ul{color:rgba(255,255,255,.78);font-size:15.5px;padding-left:22px;margin-bottom:12px}
+.article li{margin-bottom:7px}
+.article a{color:#fff;text-decoration:underline;text-decoration-color:rgba(139,92,255,.7);
+  text-underline-offset:3px}
+.faq{display:flex;flex-direction:column;gap:10px;margin-top:18px}
+details{padding:18px 22px;background:var(--card);border:1px solid var(--line);border-radius:14px}
+details summary{font-weight:600;cursor:pointer;list-style:none;font-size:15.5px}
+details summary::-webkit-details-marker{display:none}
+details summary:after{content:"+";float:right;color:var(--muted);font-weight:600;font-size:18px}
+details[open] summary:after{content:"\2013"}
+details[open] summary{margin-bottom:10px}
+details p{font-size:14.5px;color:var(--muted);margin-bottom:0}
+.contact{margin:26px 0;padding:24px;background:var(--card);border:1px solid var(--line);border-radius:16px}
+.contact .lbl{color:var(--faint);font-size:12.5px;letter-spacing:.06em;margin-bottom:7px;text-transform:uppercase}
+.contact a{font-size:18px;font-weight:600;color:#fff}
+.contact .reply{font-size:13px;color:var(--muted);margin-top:8px}
+.back{display:inline-block;margin-top:30px;padding:11px 20px;border:1px solid var(--line);
+  border-radius:12px;font-size:14px}
+.back:hover{border-color:rgba(255,255,255,.3)}
+
+/* Footer */
+footer{border-top:1px solid var(--line);padding:44px 24px;margin-top:40px}
+footer .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:18px}
+footer .fl{display:flex;gap:26px;font-size:14px;color:var(--muted)}
+footer .fl a:hover{color:#fff}
+footer .cp{font-size:13px;color:var(--faint)}
+
+@media (max-width:860px){
+  .hero .wrap{grid-template-columns:1fr;gap:48px;padding:64px 24px 76px;text-align:center}
+  .lead{margin-left:auto;margin-right:auto}
+  .cta-row{justify-content:center}
+  h1{font-size:44px}
+  h2,.band h2{font-size:30px}
+  .navlinks{display:none}
+  .bento{grid-template-columns:repeat(2,1fr)}
+  .c-span3,.c-span2,.c-span6{grid-column:span 2}
+  .phone{transform:scale(.92)}
+}
+@media (max-width:520px){
+  .bento{grid-template-columns:1fr}
+  .c-span3,.c-span2,.c-span6{grid-column:span 1}
+  h1{font-size:36px}
+}
