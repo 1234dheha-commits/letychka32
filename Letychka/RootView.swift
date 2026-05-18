@@ -72,6 +72,7 @@ struct RootView: View {
                 UserDefaults.standard.set(Date(), forKey: "firstLaunch")
             }
             ble.start()
+            ble.setMyAvatar(Self.tinyAvatar(avatar))
         }
         .onChange(of: avatarItem) { _, item in
             guard let item else { return }
@@ -80,9 +81,21 @@ struct RootView: View {
                    let ui = UIImage(data: data) {
                     AvatarStore.save(ui)
                     avatar = ui
+                    ble.setMyAvatar(Self.tinyAvatar(ui))
                 }
             }
         }
+    }
+
+    /// A very small avatar (~64px JPEG) to broadcast over Bluetooth.
+    static func tinyAvatar(_ image: UIImage?) -> Data? {
+        guard let image else { return nil }
+        let dim: CGFloat = 64
+        let s = min(1, dim / max(image.size.width, image.size.height))
+        let sz = CGSize(width: image.size.width * s, height: image.size.height * s)
+        let r = UIGraphicsImageRenderer(size: sz)
+        let img = r.image { _ in image.draw(in: CGRect(origin: .zero, size: sz)) }
+        return img.jpegData(compressionQuality: 0.4)
     }
 
     private var header: some View {
@@ -298,6 +311,7 @@ struct RootView: View {
                                     AvatarStore.clear()
                                     avatar = nil
                                     avatarItem = nil
+                                    ble.setMyAvatar(nil)
                                 } label: {
                                     Text(L("Remove photo"))
                                 }
@@ -305,7 +319,7 @@ struct RootView: View {
                         }
                     }
                     if !hideHints {
-                        Text(L("Your avatar is local only. It is not sent to people nearby; Bluetooth carries just short text."))
+                        Text(L("Your avatar is shared over Bluetooth with people near you so they see your photo. It is tiny and never goes to any server."))
                             .font(.system(size: 12))
                             .foregroundStyle(Theme.muted(scheme))
                     }

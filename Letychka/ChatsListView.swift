@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// The "Chats" tab: a list of conversations from this session. Chats are
 /// ephemeral (in memory only) and anonymous, matching the app's design.
@@ -76,11 +77,17 @@ struct ChatsListView: View {
         let isPinned = ble.pinned.contains(c.id)
         return HStack(spacing: 12) {
             ZStack {
-                Circle().fill(Theme.accent.opacity(0.18))
-                    .frame(width: 46, height: 46)
-                Text(String(c.nick.prefix(1)).uppercased())
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundStyle(Theme.accent)
+                if let d = ble.avatars[c.id], let ui = UIImage(data: d) {
+                    Image(uiImage: ui).resizable().scaledToFill()
+                        .frame(width: 46, height: 46)
+                        .clipShape(Circle())
+                } else {
+                    Circle().fill(Theme.accent.opacity(0.18))
+                        .frame(width: 46, height: 46)
+                    Text(String(c.nick.prefix(1)).uppercased())
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(Theme.accent)
+                }
                 if c.online {
                     Circle().fill(Theme.accent)
                         .frame(width: 12, height: 12)

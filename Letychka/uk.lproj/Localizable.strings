@@ -62,7 +62,7 @@
 "Choose photo" = "Вибрати фото";
 "Replace photo" = "Замінити фото";
 "Remove photo" = "Прибрати фото";
-"Your avatar is local only. It is not sent to people nearby; Bluetooth carries just short text." = "Аватар лише локальний. Його не надсилають людям поруч; Bluetooth передає тільки короткий текст.";
+"Your avatar is shared over Bluetooth with people near you so they see your photo. It is tiny and never goes to any server." = "Аватар передається через Bluetooth людям поруч, щоб вони бачили ваше фото. Він крихітний і ніколи не йде на жоден сервер.";
 "Appearance" = "Вигляд";
 "Hide hints" = "Сховати підказки";
 "Theme" = "Тема";

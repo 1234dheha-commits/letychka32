@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Sonar radar: you sit in the center, people nearby are glowing blips.
 /// Angle is stable per id, distance comes from signal strength (stronger
@@ -73,15 +74,26 @@ struct RadarView: View {
                                 Circle().fill(Theme.accent.opacity(0.18))
                                     .frame(width: 38, height: 38)
                                     .scaleEffect(breathe ? 1.12 : 0.92)
-                                Circle().fill(Theme.accent)
-                                    .frame(width: 24, height: 24)
-                                    .overlay(Circle().stroke(.white.opacity(0.85),
-                                                             lineWidth: 1))
-                                    .shadow(color: Theme.accent.opacity(0.9),
-                                            radius: 7)
-                                Text(String(peer.nick.prefix(1)).uppercased())
-                                    .font(.system(size: 12, weight: .bold))
-                                    .foregroundStyle(.white)
+                                if let d = ble.avatars[peer.id],
+                                   let ui = UIImage(data: d) {
+                                    Image(uiImage: ui).resizable().scaledToFill()
+                                        .frame(width: 26, height: 26)
+                                        .clipShape(Circle())
+                                        .overlay(Circle().stroke(.white.opacity(0.9),
+                                                                 lineWidth: 1.5))
+                                        .shadow(color: Theme.accent.opacity(0.8),
+                                                radius: 6)
+                                } else {
+                                    Circle().fill(Theme.accent)
+                                        .frame(width: 24, height: 24)
+                                        .overlay(Circle().stroke(.white.opacity(0.85),
+                                                                 lineWidth: 1))
+                                        .shadow(color: Theme.accent.opacity(0.9),
+                                                radius: 7)
+                                    Text(String(peer.nick.prefix(1)).uppercased())
+                                        .font(.system(size: 12, weight: .bold))
+                                        .foregroundStyle(.white)
+                                }
                             }
                             Text(peer.nick)
                                 .font(.system(size: 11, weight: .semibold))

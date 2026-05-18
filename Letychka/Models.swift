@@ -110,6 +110,7 @@ enum Frame {
 
     static let typeImage: UInt8 = 1
     static let typeAudio: UInt8 = 2
+    static let typeAvatar: UInt8 = 3   // tiny profile photo, not a chat message
 
     /// Header is 1 (kind) + 8 (senderID). Keep a chunk small enough that a
     /// whole frame still fits a modern iPhone BLE ATT payload (>= ~185).

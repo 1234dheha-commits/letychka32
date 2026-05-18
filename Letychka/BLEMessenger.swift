@@ -152,6 +152,52 @@ final class BLEMessenger: NSObject, ObservableObject {
            let m = try? JSONDecoder().decode([ChatMessage].self, from: d) {
             roomMessages = m
         }
+        if let u = avatarsURL, let d = try? Data(contentsOf: u),
+           let m = try? JSONDecoder().decode([String: Data].self, from: d) {
+            avatars = m
+        }
+    }
+
+    /// peerID -> tiny profile photo (jpeg) received over BLE.
+    @Published var avatars: [String: Data] = [:]
+    private var myAvatarBlob: Data?
+    private var sentAvatarTo: Set<String> = []
+    private var avatarSaveScheduled = false
+    private var avatarsURL: URL? {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
+            .first?.appendingPathComponent("avatars.json")
+    }
+    private func persistAvatars() {
+        guard !avatarSaveScheduled else { return }
+        avatarSaveScheduled = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            guard let self else { return }
+            self.avatarSaveScheduled = false
+            guard let u = self.avatarsURL,
+                  let d = try? JSONEncoder().encode(self.avatars) else { return }
+            try? d.write(to: u, options: .atomic)
+        }
+    }
+
+    /// Set (or clear) the tiny avatar we send to people nearby. Resending
+    /// is allowed again to everyone after a change.
+    func setMyAvatar(_ data: Data?) {
+        myAvatarBlob = data
+        sentAvatarTo.removeAll()
+        guard data != nil else { return }
+        for pid in Set(connected.keys).union(peers.map { $0.id }) {
+            maybeSendAvatar(to: pid)
+        }
+    }
+    private func sendAvatar(to peerID: String) {
+        guard let blob = myAvatarBlob, !blob.isEmpty else { return }
+        enqueue(Frame.frames(for: blob, type: Frame.typeAvatar,
+                             msgID: 0, nick: nick), to: peerID)
+    }
+    private func maybeSendAvatar(to sid: String) {
+        guard myAvatarBlob != nil, !sentAvatarTo.contains(sid) else { return }
+        sentAvatarTo.insert(sid)
+        sendAvatar(to: sid)
     }
 
     private var roomSaveScheduled = false
@@ -366,8 +412,12 @@ final class BLEMessenger: NSObject, ObservableObject {
         blocked.removeAll()
         UserDefaults.standard.removeObject(forKey: "blocked")
         roomMessages.removeAll()
+        avatars.removeAll()
+        myAvatarBlob = nil
+        sentAvatarTo.removeAll()
         if let u = storeURL { try? FileManager.default.removeItem(at: u) }
         if let u = roomURL { try? FileManager.default.removeItem(at: u) }
+        if let u = avatarsURL { try? FileManager.default.removeItem(at: u) }
         setNick("")
     }
 
@@ -508,6 +558,7 @@ final class BLEMessenger: NSObject, ObservableObject {
         let sid = String(bytes: data[(s + 1)..<(s + 9)], encoding: .utf8) ?? cbid
         if blocked.contains(sid) { return }       // ignore blocked people
         cbToStable[cbid] = sid
+        maybeSendAvatar(to: sid)   // exchange tiny avatars on first contact
         let body = [UInt8](data.dropFirst(Frame.header))
         switch kind {
         case Frame.TEXT:
@@ -533,7 +584,7 @@ final class BLEMessenger: NSObject, ObservableObject {
                                 buf: [UInt8](repeating: 0, count: total),
                                 received: 0, peer: sid, msgID: mid,
                                 ts: Date())
-            setIncoming(sid, 0)
+            if mtype != Frame.typeAvatar { setIncoming(sid, 0) }
         case Frame.CHUNK:
             guard body.count >= 8, var box = inbox[Frame.readU32(body, 0)] else { return }
             let xfer = Frame.readU32(body, 0)
@@ -545,12 +596,19 @@ final class BLEMessenger: NSObject, ObservableObject {
             box.received += n
             box.ts = Date()
             inbox[xfer] = box
-            setIncoming(sid, min(100, box.received * 100 / max(1, box.total)))
+            if box.type != Frame.typeAvatar {
+                setIncoming(sid, min(100, box.received * 100 / max(1, box.total)))
+            }
         case Frame.END:
             guard body.count >= 4 else { return }
             let xfer = Frame.readU32(body, 0)
             guard let box = inbox[xfer] else { return }
             inbox[xfer] = nil
+            if box.type == Frame.typeAvatar {
+                let blob = Data(box.buf)
+                onMain { self.avatars[box.peer] = blob; self.persistAvatars() }
+                break
+            }
             clearIncoming(sid)
             append(ChatMessage(peerID: box.peer, mine: false, text: "",
                                date: Date(),
@@ -770,6 +828,7 @@ extension BLEMessenger: CBPeripheralDelegate {
             outChar[id] = c
             p.setNotifyValue(true, for: c)
             pump(id)
+            maybeSendAvatar(to: id)
         }
     }
 
