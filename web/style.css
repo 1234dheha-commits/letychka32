@@ -2,7 +2,7 @@
   --bg:#000; --bg2:#0b0b0e;
   --text:#fff; --muted:rgba(255,255,255,.60); --faint:rgba(255,255,255,.40);
   --line:rgba(255,255,255,.10); --card:rgba(255,255,255,.03);
-  --accent:#8B5CFF;
+  --accent:#FF7A1A;
   color-scheme:dark;
 }
 *{box-sizing:border-box;margin:0;padding:0}
@@ -56,8 +56,8 @@ h1{font-size:58px;font-weight:800;letter-spacing:-.035em;line-height:1.05;color:
   background:#000;display:flex;flex-direction:column;align-items:center}
 .radar{position:relative;width:210px;height:210px;margin:60px auto 8px;border-radius:50%;
   border:1px solid var(--line);
-  background:radial-gradient(circle at 50% 50%,rgba(139,92,255,.16),transparent 62%)}
-.radar i{position:absolute;border:1px solid rgba(139,92,255,.32);border-radius:50%}
+  background:radial-gradient(circle at 50% 50%,rgba(255,122,26,.16),transparent 62%)}
+.radar i{position:absolute;border:1px solid rgba(255,122,26,.32);border-radius:50%}
 .radar i.r1{inset:14%}
 .radar i.r2{inset:30%}
 .radar .dot{position:absolute;left:50%;top:50%;width:14px;height:14px;border:0;
@@ -101,7 +101,7 @@ h2{font-size:40px;font-weight:800;letter-spacing:-.03em;text-align:center;line-h
 .article p{color:rgba(255,255,255,.78);font-size:15.5px;margin-bottom:12px}
 .article ul{color:rgba(255,255,255,.78);font-size:15.5px;padding-left:22px;margin-bottom:12px}
 .article li{margin-bottom:7px}
-.article a{color:#fff;text-decoration:underline;text-decoration-color:rgba(139,92,255,.7);
+.article a{color:#fff;text-decoration:underline;text-decoration-color:rgba(255,122,26,.7);
   text-underline-offset:3px}
 .faq{display:flex;flex-direction:column;gap:10px;margin-top:18px}
 details{padding:18px 22px;background:var(--card);border:1px solid var(--line);border-radius:14px}

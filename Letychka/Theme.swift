@@ -3,7 +3,7 @@ import SwiftUI
 /// Visual language shared with Reboard: near-black dark theme, violet accent,
 /// rounded controls, system font, minimalist. Adapts to light mode too.
 enum Theme {
-    static let accent = Color(red: 0.545, green: 0.361, blue: 1.0)   // #8B5CFF
+    static let accent = Color(red: 1.0, green: 0.478, blue: 0.102)   // #FF7A1A
 
     static func bg(_ scheme: ColorScheme) -> Color {
         scheme == .dark ? Color.black

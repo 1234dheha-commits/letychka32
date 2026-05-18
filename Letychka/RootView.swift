@@ -96,10 +96,12 @@ struct RootView: View {
     }
 
     private var statusLine: some View {
-        Text(ble.poweredOn
-             ? (ble.peers.isEmpty ? "Looking for people nearby"
-                                  : "\(ble.peers.count) nearby, tap to chat")
-             : "Turn on Bluetooth to find people nearby")
+        Text(!ble.visible
+             ? "You are hidden. Turn it back on in Settings."
+             : (ble.poweredOn
+                ? (ble.peers.isEmpty ? "Looking for people nearby"
+                                     : "\(ble.peers.count) nearby, tap to chat")
+                : "Turn on Bluetooth to find people nearby"))
             .font(.system(size: 13))
             .foregroundStyle(Theme.muted(scheme))
             .padding(.top, 6)
@@ -261,6 +263,14 @@ struct RootView: View {
                     TextField("Anon", text: $nickField)
                         .onSubmit { ble.setNick(nickField) }
                     Text(joinedText)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.muted(scheme))
+                }
+                Section("Nearby") {
+                    Toggle("Show me on the radar", isOn: Binding(
+                        get: { ble.visible },
+                        set: { ble.setVisible($0) }))
+                    Text("Turn off to disconnect from the map. You become invisible to people nearby and your radar clears. Turn it back on to reconnect.")
                         .font(.system(size: 12))
                         .foregroundStyle(Theme.muted(scheme))
                 }

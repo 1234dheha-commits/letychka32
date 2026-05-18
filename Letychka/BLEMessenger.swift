@@ -32,10 +32,14 @@ final class BLEMessenger: NSObject, ObservableObject {
     @Published var unread: [String: Int] = [:]
     /// peerID -> time we last heard "typing" from them (pruned after 5s).
     @Published var typing: [String: Date] = [:]
+    /// When false the device neither advertises nor scans: invisible + radar
+    /// cleared. Lets the user disconnect from the map.
+    @Published var visible = true
 
     /// The chat currently on screen, so its messages are not counted unread.
     var activeChat: String?
     private var typingPrune: Timer?
+    private var pruneTimer: Timer?
     private var notifOK = false
 
     var poweredOn: Bool { status == .on }
@@ -76,6 +80,40 @@ final class BLEMessenger: NSObject, ObservableObject {
                 .requestAuthorization(options: [.alert, .sound, .badge]) { ok, _ in
                     DispatchQueue.main.async { self.notifOK = ok }
                 }
+            // Drop people who walked away / turned Bluetooth off even when no
+            // new scan callbacks arrive, so the radar does not keep ghosts.
+            pruneTimer = Timer.scheduledTimer(withTimeInterval: 3,
+                                              repeats: true) { [weak self] _ in
+                guard let self else { return }
+                let cutoff = Date().addingTimeInterval(-9)
+                let before = self.peers.count
+                self.peers.removeAll { $0.lastSeen < cutoff }
+                if self.peers.count != before {
+                    self.discovered = self.discovered.filter { k, _ in
+                        self.peers.contains { $0.id == k }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Disconnect from / reconnect to the map. Off = invisible to others and
+    /// radar cleared; on = advertise + scan again.
+    func setVisible(_ on: Bool) {
+        visible = on
+        guard central != nil else { return }
+        if on {
+            if central.state == .poweredOn {
+                central.scanForPeripherals(
+                    withServices: [Self.serviceUUID],
+                    options: [CBCentralManagerScanOptionAllowDuplicatesKey: true])
+            }
+            restartAdvertising()
+        } else {
+            if central.state == .poweredOn { central.stopScan() }
+            peripheral?.stopAdvertising()
+            peers.removeAll()
+            discovered.removeAll()
         }
     }
 
@@ -373,18 +411,27 @@ final class BLEMessenger: NSObject, ObservableObject {
                 }
                 self.peers[i].lastSeen = Date()
                 if !nick.isEmpty { self.peers[i].nick = nick }
+            } else if !nick.isEmpty, nick != "Anon",
+                      let j = self.peers.firstIndex(where: { $0.nick == nick }) {
+                // Same person re-appeared under a new Bluetooth id (they
+                // toggled BT / re-advertised). Keep ONE blip and track the
+                // newest id so a tap still reaches them, instead of stacking
+                // duplicate jittering dots.
+                let keepRssi = rssi == 0 ? self.peers[j].rssi : rssi
+                self.peers[j] = Peer(id: id, nick: nick,
+                                     rssi: keepRssi, lastSeen: Date())
             } else {
                 self.peers.append(Peer(id: id, nick: nick.isEmpty ? "Anon" : nick,
                                        rssi: rssi == 0 ? -65 : rssi, lastSeen: Date()))
             }
-            // Drop peers not seen for a while.
-            let cutoff = Date().addingTimeInterval(-20)
-            self.peers.removeAll { $0.lastSeen < cutoff && self.connected[$0.id] == nil }
+            // Drop peers not seen recently (also handled by the prune timer).
+            let cutoff = Date().addingTimeInterval(-9)
+            self.peers.removeAll { $0.lastSeen < cutoff }
         }
     }
 
     private func restartAdvertising() {
-        guard peripheral?.state == .poweredOn else { return }
+        guard visible, peripheral?.state == .poweredOn else { return }
         peripheral.stopAdvertising()
         peripheral.startAdvertising([
             CBAdvertisementDataServiceUUIDsKey: [Self.serviceUUID],
@@ -406,7 +453,7 @@ extension BLEMessenger: CBCentralManagerDelegate {
         default:             s = .unknown
         }
         DispatchQueue.main.async { self.status = s }
-        if m.state == .poweredOn {
+        if m.state == .poweredOn, visible {
             m.scanForPeripherals(withServices: [Self.serviceUUID],
                                  options: [CBCentralManagerScanOptionAllowDuplicatesKey: true])
         }
