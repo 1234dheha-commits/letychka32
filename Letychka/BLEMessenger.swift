@@ -19,6 +19,8 @@ final class BLEMessenger: NSObject, ObservableObject {
 
     @Published var peers: [Peer] = []
     @Published var messages: [ChatMessage] = []
+    /// Shared "nearby room": one common chat for everyone in BLE range.
+    @Published var roomMessages: [ChatMessage] = []
     @Published var status: BTStatus = .unknown
     @Published var nick: String = UserDefaults.standard.string(forKey: "nick") ?? "Anon"
     /// Pinned conversations (peer ids). Session-scoped like everything else.
@@ -135,10 +137,50 @@ final class BLEMessenger: NSObject, ObservableObject {
     private func loadStore() {
         guard !loaded else { return }
         loaded = true
-        guard let u = storeURL, let d = try? Data(contentsOf: u),
-              let m = try? JSONDecoder().decode([ChatMessage].self, from: d)
-        else { return }
-        messages = m
+        if let u = storeURL, let d = try? Data(contentsOf: u),
+           let m = try? JSONDecoder().decode([ChatMessage].self, from: d) {
+            messages = m
+        }
+        if let u = roomURL, let d = try? Data(contentsOf: u),
+           let m = try? JSONDecoder().decode([ChatMessage].self, from: d) {
+            roomMessages = m
+        }
+    }
+
+    private var roomSaveScheduled = false
+    private var roomURL: URL? {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
+            .first?.appendingPathComponent("room.json")
+    }
+    private func persistRoom() {
+        guard !roomSaveScheduled else { return }
+        roomSaveScheduled = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+            guard let self else { return }
+            self.roomSaveScheduled = false
+            guard let u = self.roomURL,
+                  let d = try? JSONEncoder().encode(self.roomMessages) else { return }
+            try? d.write(to: u, options: .atomic)
+        }
+    }
+
+    /// Broadcast a message to everyone in Bluetooth range (shared room).
+    func sendRoom(_ text: String) {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return }
+        broadcast(Frame.room(nick: nick, text: String(t.prefix(240))))
+        appendRoom(ChatMessage(peerID: Ident.me, mine: true,
+                               text: t, date: Date()))
+    }
+
+    private func appendRoom(_ m: ChatMessage) {
+        DispatchQueue.main.async {
+            self.roomMessages.append(m)
+            if self.roomMessages.count > 500 {
+                self.roomMessages.removeFirst(self.roomMessages.count - 500)
+            }
+            self.persistRoom()
+        }
     }
 
     func isBlocked(_ peerID: String) -> Bool { blocked.contains(peerID) }
@@ -300,7 +342,9 @@ final class BLEMessenger: NSObject, ObservableObject {
         names.removeAll()
         blocked.removeAll()
         UserDefaults.standard.removeObject(forKey: "blocked")
+        roomMessages.removeAll()
         if let u = storeURL { try? FileManager.default.removeItem(at: u) }
+        if let u = roomURL { try? FileManager.default.removeItem(at: u) }
         setNick("")
     }
 
@@ -518,6 +562,13 @@ final class BLEMessenger: NSObject, ObservableObject {
                     $0.wireID == mid && $0.peerID == sid
                 }) { self.messages[i].text = nt; self.persist() }
             }
+        case Frame.ROOM:
+            guard let msg = Wire.decode(Data(body)) else { return }
+            if !msg.nick.isEmpty {
+                DispatchQueue.main.async { self.names[sid] = msg.nick }
+            }
+            appendRoom(ChatMessage(peerID: sid, mine: false,
+                                   text: msg.text, date: Date()))
         default:
             return
         }

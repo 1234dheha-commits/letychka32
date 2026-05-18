@@ -88,6 +88,7 @@ enum Wire {
 ///   PROFILE 8 : [utf8 nick]              (live rename)
 ///   REACT   9 : [4 msgID][utf8 emoji]    (emoji "" clears it)
 ///   SEEN   10 : [4 lastWireID]           (read receipt up to that id)
+///   ROOM   11 : [utf8 "nick\u{1}text"]   (shared nearby room broadcast)
 enum Frame {
     static let TEXT:    UInt8 = 0x01
     static let HEAD:    UInt8 = 0x02
@@ -99,6 +100,7 @@ enum Frame {
     static let PROFILE: UInt8 = 0x08
     static let REACT:   UInt8 = 0x09
     static let SEEN:    UInt8 = 0x0A
+    static let ROOM:    UInt8 = 0x0B
 
     static let typeImage: UInt8 = 1
     static let typeAudio: UInt8 = 2
@@ -136,6 +138,9 @@ enum Frame {
     }
     static func seen(lastWireID: UInt32) -> Data {
         wrap(SEEN, u32(lastWireID))
+    }
+    static func room(nick: String, text: String) -> Data {
+        wrap(ROOM, Wire.encode(nick: nick, text: text))
     }
     static func head(xfer: UInt32, total: Int, type: UInt8,
                      msgID: UInt32, nick: String) -> Data {

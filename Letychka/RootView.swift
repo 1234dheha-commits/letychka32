@@ -31,6 +31,7 @@ struct RootView: View {
                             Text("Radar").tag(0)
                             Text(ble.unreadTotal > 0
                                  ? "Chats (\(ble.unreadTotal))" : "Chats").tag(1)
+                            Text("Room").tag(2)
                         }
                         .pickerStyle(.segmented)
                         .padding(.horizontal, 20)
@@ -41,8 +42,10 @@ struct RootView: View {
                             RadarView(ble: ble) { chatPeer = $0 }
                                 .padding(20)
                             footer
-                        } else {
+                        } else if tab == 1 {
                             ChatsListView(ble: ble) { chatPeer = $0 }
+                        } else {
+                            RoomView(ble: ble)
                         }
                     } else {
                         btRequiredView
