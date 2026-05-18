@@ -298,8 +298,8 @@ final class BLEMessenger: NSObject, ObservableObject {
         c.title = names[m.peerID] ?? "Letychka"
         switch m.kind {
         case .text:  c.body = m.text
-        case .image: c.body = "Photo"
-        case .audio: c.body = "Voice message"
+        case .image: c.body = L("Photo")
+        case .audio: c.body = L("Voice message")
         }
         c.sound = .default
         UNUserNotificationCenter.current().add(

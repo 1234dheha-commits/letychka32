@@ -45,7 +45,7 @@ struct ChatView: View {
             }
 
             if let pct = receiving {
-                Text("Receiving media \(pct)%")
+                Text(L("Receiving media %d%%", pct))
                     .font(.system(size: 12))
                     .foregroundStyle(Theme.muted(scheme))
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -60,7 +60,7 @@ struct ChatView: View {
             }
 
             if ble.isTyping(peer.id) {
-                Text("\(peer.nick) is typing...")
+                Text(L("%@ is typing...", peer.nick))
                     .font(.system(size: 12))
                     .foregroundStyle(Theme.accent)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -72,11 +72,11 @@ struct ChatView: View {
                     Image(systemName: "pencil")
                         .font(.system(size: 12))
                         .foregroundStyle(Theme.accent)
-                    Text("Editing message")
+                    Text(L("Editing message"))
                         .font(.system(size: 12))
                         .foregroundStyle(Theme.muted(scheme))
                     Spacer()
-                    Button("Cancel") { editing = nil; draft = "" }
+                    Button(L("Cancel")) { editing = nil; draft = "" }
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(Theme.accent)
                 }
@@ -88,12 +88,12 @@ struct ChatView: View {
                     Image(systemName: "arrowshape.turn.up.left")
                         .font(.system(size: 12))
                         .foregroundStyle(Theme.accent)
-                    Text("Reply: \(snippet(r))")
+                    Text(L("Reply: %@", snippet(r)))
                         .font(.system(size: 12))
                         .foregroundStyle(Theme.muted(scheme))
                         .lineLimit(1)
                     Spacer()
-                    Button("Cancel") { replyingTo = nil }
+                    Button(L("Cancel")) { replyingTo = nil }
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(Theme.accent)
                 }
@@ -121,7 +121,7 @@ struct ChatView: View {
                 let blob = data.flatMap { Self.compressImage($0) }
                 await MainActor.run {
                     if let blob { ble.sendMedia(blob, image: true, to: peer.id) }
-                    else { notice = "Could not attach that photo" }
+                    else { notice = L("Could not attach that photo") }
                     photoItem = nil
                 }
             }
@@ -133,8 +133,8 @@ struct ChatView: View {
     private func snippet(_ m: ChatMessage) -> String {
         switch m.kind {
         case .text:  return String(m.text.prefix(50))
-        case .image: return "Photo"
-        case .audio: return "Voice message"
+        case .image: return L("Photo")
+        case .audio: return L("Voice message")
         }
     }
 
@@ -186,13 +186,13 @@ struct ChatView: View {
     /// other person is actually in range).
     private func status(_ m: ChatMessage) -> (String, Bool) {
         if m.wireID != 0, (ble.seenUpTo[peer.id] ?? 0) >= m.wireID {
-            return ("Seen", false)
+            return (L("Seen"), false)
         }
-        if m.delivered == true { return ("Delivered", false) }
+        if m.delivered == true { return (L("Delivered"), false) }
         if Date().timeIntervalSince(m.date) > 25 {
-            return ("Not delivered. Will send when they are nearby.", true)
+            return (L("Not delivered. Will send when they are nearby."), true)
         }
-        return ("Sending...", false)
+        return (L("Sending..."), false)
     }
 
     // MARK: Bubbles
@@ -216,7 +216,7 @@ struct ChatView: View {
                     .overlay(RoundedRectangle(cornerRadius: 15)
                         .stroke(Theme.line(scheme), lineWidth: 0.5))
             } else {
-                brokenBubble("Photo")
+                brokenBubble(L("Photo"))
             }
         case .audio:
             audioBubble(m)
@@ -231,25 +231,25 @@ struct ChatView: View {
             }
             if m.reaction != nil {
                 Button(role: .destructive) { ble.sendReaction(m, "") } label: {
-                    Label("Remove reaction", systemImage: "xmark")
+                    Label(L("Remove reaction"), systemImage: "xmark")
                 }
             }
-        } label: { Label("React", systemImage: "face.smiling") }
+        } label: { Label(L("React"), systemImage: "face.smiling") }
         Button { replyingTo = m; editing = nil } label: {
-            Label("Reply", systemImage: "arrowshape.turn.up.left")
+            Label(L("Reply"), systemImage: "arrowshape.turn.up.left")
         }
         if m.mine && m.kind == .text {
             Button {
                 editing = m
                 replyingTo = nil
                 draft = m.text
-            } label: { Label("Edit", systemImage: "pencil") }
+            } label: { Label(L("Edit"), systemImage: "pencil") }
         }
         Button(role: .destructive) {
             if editing?.id == m.id { editing = nil; draft = "" }
             ble.deleteMessage(m)
         } label: {
-            Label(m.mine ? "Delete for everyone" : "Delete for me",
+            Label(m.mine ? L("Delete for everyone") : L("Delete for me"),
                   systemImage: "trash")
         }
     }
@@ -275,7 +275,7 @@ struct ChatView: View {
                 Image(systemName: "waveform")
                     .font(.system(size: 18))
                     .foregroundStyle(m.mine ? .white : Theme.text(scheme))
-                Text("Voice message")
+                Text(L("Voice message"))
                     .font(.system(size: 14))
                     .foregroundStyle(m.mine ? .white : Theme.text(scheme))
             }
@@ -300,7 +300,7 @@ struct ChatView: View {
                 notice = nil
                 recorder.toggle { blob in
                     if let blob { ble.sendMedia(blob, image: false, to: peer.id) }
-                    else { notice = "Microphone access is needed for voice messages" }
+                    else { notice = L("Microphone access is needed for voice messages") }
                 }
             } label: {
                 Image(systemName: recorder.isRecording ? "stop.circle.fill" : "mic")
@@ -309,12 +309,12 @@ struct ChatView: View {
                     .frame(width: 34, height: 42)
             }
             if recorder.isRecording {
-                Text("\(recorder.elapsed)s")
+                Text(L("%ds", recorder.elapsed))
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.red)
                     .frame(width: 26)
             }
-            TextField("Message", text: $draft)
+            TextField(L("Message"), text: $draft)
                 .textFieldStyle(.plain)
                 .padding(.vertical, 11).padding(.horizontal, 14)
                 .background(Theme.surface(scheme))

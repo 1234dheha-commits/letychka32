@@ -28,10 +28,11 @@ struct RootView: View {
                     header
                     if ble.status == .on || bypassBT {
                         Picker("", selection: $tab) {
-                            Text("Radar").tag(0)
+                            Text(L("Radar")).tag(0)
                             Text(ble.unreadTotal > 0
-                                 ? "Chats (\(ble.unreadTotal))" : "Chats").tag(1)
-                            Text("Room").tag(2)
+                                 ? L("Chats (%d)", ble.unreadTotal)
+                                 : L("Chats")).tag(1)
+                            Text(L("Room")).tag(2)
                         }
                         .pickerStyle(.segmented)
                         .padding(.horizontal, 20)
@@ -98,20 +99,23 @@ struct RootView: View {
         .padding(.horizontal, 20).padding(.top, 8)
     }
 
+    private var statusText: String {
+        if !ble.visible { return L("You are hidden. Turn it back on in Settings.") }
+        if !ble.poweredOn { return L("Turn on Bluetooth to find people nearby") }
+        return ble.peers.isEmpty
+            ? L("Looking for people nearby")
+            : L("%d nearby, tap to chat", ble.peers.count)
+    }
+
     private var statusLine: some View {
-        Text(!ble.visible
-             ? "You are hidden. Turn it back on in Settings."
-             : (ble.poweredOn
-                ? (ble.peers.isEmpty ? "Looking for people nearby"
-                                     : "\(ble.peers.count) nearby, tap to chat")
-                : "Turn on Bluetooth to find people nearby"))
+        Text(statusText)
             .font(.system(size: 13))
             .foregroundStyle(Theme.muted(scheme))
             .padding(.top, 6)
     }
 
     private var footer: some View {
-        Text("Anonymous. No internet, no servers, no accounts. Works only with people near you.")
+        Text(L("Anonymous. No internet, no servers, no accounts. Works only with people near you."))
             .font(.system(size: 12))
             .foregroundStyle(Theme.muted(scheme))
             .multilineTextAlignment(.center)
@@ -123,7 +127,7 @@ struct RootView: View {
         let f = DateFormatter()
         f.dateStyle = .medium
         f.timeStyle = .none
-        return "On Letychka since \(f.string(from: d))"
+        return L("On Letychka since %@", f.string(from: d))
     }
 
     private var btIcon: String {
@@ -133,22 +137,22 @@ struct RootView: View {
     }
     private var btTitle: String {
         switch ble.status {
-        case .off:          return "Bluetooth is off"
-        case .unauthorized: return "Bluetooth access needed"
-        case .unsupported:  return "Bluetooth unavailable"
-        default:            return "Starting Bluetooth"
+        case .off:          return L("Bluetooth is off")
+        case .unauthorized: return L("Bluetooth access needed")
+        case .unsupported:  return L("Bluetooth unavailable")
+        default:            return L("Starting Bluetooth")
         }
     }
     private var btMessage: String {
         switch ble.status {
         case .off:
-            return "Letychka works only over Bluetooth. Turn Bluetooth on to find people near you. No internet is used."
+            return L("Letychka works only over Bluetooth. Turn Bluetooth on to find people near you. No internet is used.")
         case .unauthorized:
-            return "Letychka needs Bluetooth permission to find people near you. Enable it in Settings."
+            return L("Letychka needs Bluetooth permission to find people near you. Enable it in Settings.")
         case .unsupported:
-            return "This device does not support Bluetooth LE, so Letychka cannot run here."
+            return L("This device does not support Bluetooth LE, so Letychka cannot run here.")
         default:
-            return "Checking Bluetooth."
+            return L("Checking Bluetooth.")
         }
     }
 
@@ -167,7 +171,7 @@ struct RootView: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 36)
             if ble.status == .off || ble.status == .unauthorized {
-                Button("Open Settings") {
+                Button(L("Open Settings")) {
                     if let u = URL(string: UIApplication.openSettingsURLString) {
                         UIApplication.shared.open(u)
                     }
@@ -175,7 +179,7 @@ struct RootView: View {
                 .buttonStyle(PrimaryButtonStyle())
                 .padding(.horizontal, 56).padding(.top, 6)
             }
-            Button("Continue without Bluetooth") {
+            Button(L("Continue without Bluetooth")) {
                 bypassBT = true
             }
             .font(.system(size: 14, weight: .semibold))
@@ -190,7 +194,7 @@ struct RootView: View {
     private var settingsSheet: some View {
         NavigationStack {
             Form {
-                Section("Account") {
+                Section(L("Account")) {
                     if !appleUserID.isEmpty {
                         HStack(spacing: 12) {
                             Image(systemName: "checkmark.seal.fill")
@@ -198,11 +202,11 @@ struct RootView: View {
                                 .font(.system(size: 20))
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(appleUserName.isEmpty
-                                     ? "Signed in with Apple"
-                                     : "Signed in as \(appleUserName)")
+                                     ? L("Signed in with Apple")
+                                     : L("Signed in as %@", appleUserName))
                                     .font(.system(size: 14, weight: .semibold))
                                     .foregroundStyle(Theme.text(scheme))
-                                Text("Optional. Nothing is stored on a server.")
+                                Text(L("Optional. Nothing is stored on a server."))
                                     .font(.system(size: 11))
                                     .foregroundStyle(Theme.muted(scheme))
                             }
@@ -212,19 +216,19 @@ struct RootView: View {
                             appleUserID = ""
                             appleUserName = ""
                         } label: {
-                            Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
+                            Label(L("Sign out"), systemImage: "rectangle.portrait.and.arrow.right")
                         }
                         Button(role: .destructive) {
                             showDeleteAccountConfirm = true
                         } label: {
-                            Label("Delete account", systemImage: "trash.fill")
+                            Label(L("Delete account"), systemImage: "trash.fill")
                         }
                         .confirmationDialog(
-                            "Delete account and all local data? This removes your Apple sign-in, your name, avatar and chats from this phone. It cannot be undone.",
+                            L("Delete account and all local data? This removes your Apple sign-in, your name, avatar and chats from this phone. It cannot be undone."),
                             isPresented: $showDeleteAccountConfirm,
                             titleVisibility: .visible
                         ) {
-                            Button("Delete", role: .destructive) {
+                            Button(L("Delete"), role: .destructive) {
                                 appleUserID = ""
                                 appleUserName = ""
                                 ble.clearAll()
@@ -233,10 +237,10 @@ struct RootView: View {
                                 avatarItem = nil
                                 nickField = "Anon"
                             }
-                            Button("Cancel", role: .cancel) {}
+                            Button(L("Cancel"), role: .cancel) {}
                         }
                     } else {
-                        Text("Sign in with Apple is optional. Letychka works fully without it and stays anonymous over Bluetooth. Signing in just lets you have an account you can delete.")
+                        Text(L("Sign in with Apple is optional. Letychka works fully without it and stays anonymous over Bluetooth. Signing in just lets you have an account you can delete."))
                             .font(.system(size: 12))
                             .foregroundStyle(Theme.muted(scheme))
                         SignInWithAppleButton(.signIn,
@@ -262,22 +266,22 @@ struct RootView: View {
                         }
                     }
                 }
-                Section("Your name") {
-                    TextField("Anon", text: $nickField)
+                Section(L("Your name")) {
+                    TextField(L("Anon"), text: $nickField)
                         .onSubmit { ble.setNick(nickField) }
                     Text(joinedText)
                         .font(.system(size: 12))
                         .foregroundStyle(Theme.muted(scheme))
                 }
-                Section("Nearby") {
-                    Toggle("Show me on the radar", isOn: Binding(
+                Section(L("Nearby")) {
+                    Toggle(L("Show me on the radar"), isOn: Binding(
                         get: { ble.visible },
                         set: { ble.setVisible($0) }))
-                    Text("Turn off to disconnect from the map. You become invisible to people nearby and your radar clears. Turn it back on to reconnect.")
+                    Text(L("Turn off to disconnect from the map. You become invisible to people nearby and your radar clears. Turn it back on to reconnect."))
                         .font(.system(size: 12))
                         .foregroundStyle(Theme.muted(scheme))
                 }
-                Section("Avatar") {
+                Section(L("Avatar")) {
                     HStack(spacing: 14) {
                         if let a = avatar {
                             Image(uiImage: a).resizable().scaledToFill()
@@ -290,7 +294,7 @@ struct RootView: View {
                         }
                         VStack(alignment: .leading, spacing: 8) {
                             PhotosPicker(selection: $avatarItem, matching: .images) {
-                                Text(avatar == nil ? "Choose photo" : "Replace photo")
+                                Text(avatar == nil ? L("Choose photo") : L("Replace photo"))
                             }
                             if avatar != nil {
                                 Button(role: .destructive) {
@@ -298,58 +302,58 @@ struct RootView: View {
                                     avatar = nil
                                     avatarItem = nil
                                 } label: {
-                                    Text("Remove photo")
+                                    Text(L("Remove photo"))
                                 }
                             }
                         }
                     }
-                    Text("Your avatar is local only. It is not sent to people nearby; Bluetooth carries just short text.")
+                    Text(L("Your avatar is local only. It is not sent to people nearby; Bluetooth carries just short text."))
                         .font(.system(size: 12))
                         .foregroundStyle(Theme.muted(scheme))
                 }
-                Section("Appearance") {
-                    Picker("Theme", selection: $themeMode) {
-                        Text("Light").tag("light")
-                        Text("Dark").tag("dark")
+                Section(L("Appearance")) {
+                    Picker(L("Theme"), selection: $themeMode) {
+                        Text(L("Light")).tag("light")
+                        Text(L("Dark")).tag("dark")
                     }
                     .pickerStyle(.segmented)
                 }
                 if !ble.blocked.isEmpty {
-                    Section("Blocked") {
+                    Section(L("Blocked")) {
                         ForEach(Array(ble.blocked), id: \.self) { bid in
                             HStack {
-                                Text(ble.names[bid] ?? "Unknown")
+                                Text(ble.names[bid] ?? L("Unknown"))
                                     .font(.system(size: 15))
                                     .foregroundStyle(Theme.text(scheme))
                                 Spacer()
-                                Button("Unblock") { ble.unblock(bid) }
+                                Button(L("Unblock")) { ble.unblock(bid) }
                                     .font(.system(size: 14, weight: .semibold))
                                     .foregroundStyle(Theme.accent)
                             }
                         }
                     }
                 }
-                Section("Privacy") {
-                    Text("Letychka has no account and no sign in. There is nothing to log out of: nothing about you is sent to any server. Your name, avatar and chats are stored only on this phone. Use the button below to wipe all of it.")
+                Section(L("Privacy")) {
+                    Text(L("Letychka has no account and no sign in. There is nothing to log out of: nothing about you is sent to any server. Your name, avatar and chats are stored only on this phone. Use the button below to wipe all of it."))
                         .font(.system(size: 12))
                         .foregroundStyle(Theme.muted(scheme))
                     Button(role: .destructive) {
                         showClearConfirm = true
                     } label: {
-                        Text("Clear everything on this phone")
+                        Text(L("Clear everything on this phone"))
                     }
                 }
                 Section {
-                    Text("Letychka finds people near you over Bluetooth and lets you message them directly, with no internet and no servers. It stays anonymous and everything is kept only on your phone.")
+                    Text(L("Letychka finds people near you over Bluetooth and lets you message them directly, with no internet and no servers. It stays anonymous and everything is kept only on your phone."))
                         .font(.system(size: 13))
                         .foregroundStyle(Theme.muted(scheme))
                 }
             }
-            .navigationTitle("Settings")
+            .navigationTitle(L("Settings"))
             .navigationBarTitleDisplayMode(.inline)
-            .alert("Clear everything?", isPresented: $showClearConfirm) {
-                Button("Cancel", role: .cancel) {}
-                Button("Clear", role: .destructive) {
+            .alert(L("Clear everything?"), isPresented: $showClearConfirm) {
+                Button(L("Cancel"), role: .cancel) {}
+                Button(L("Clear"), role: .destructive) {
                     ble.clearAll()
                     AvatarStore.clear()
                     avatar = nil
@@ -357,11 +361,11 @@ struct RootView: View {
                     nickField = "Anon"
                 }
             } message: {
-                Text("Removes your name, avatar and all chats from this phone. This cannot be undone.")
+                Text(L("Removes your name, avatar and all chats from this phone. This cannot be undone."))
             }
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { ble.setNick(nickField); showSettings = false }
+                    Button(L("Done")) { ble.setNick(nickField); showSettings = false }
                 }
             }
         }

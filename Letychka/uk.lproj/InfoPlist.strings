@@ -1,0 +1,3 @@
+"NSBluetoothAlwaysUsageDescription" = "Letychka використовує Bluetooth, щоб знаходити людей поруч і обмінюватися повідомленнями напряму між телефонами, без інтернету і серверів.";
+"NSBluetoothPeripheralUsageDescription" = "Letychka використовує Bluetooth, щоб вас могли знаходити люди поруч для офлайн-спілкування.";
+"NSMicrophoneUsageDescription" = "Letychka використовує мікрофон, щоб записувати короткі голосові повідомлення, які ви надсилаєте людям поруч через Bluetooth.";

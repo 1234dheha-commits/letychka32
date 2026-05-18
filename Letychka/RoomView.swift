@@ -8,7 +8,7 @@ struct RoomView: View {
     @State private var draft = ""
 
     private func nickOf(_ m: ChatMessage) -> String {
-        ble.names[m.peerID] ?? "Anon"
+        ble.names[m.peerID] ?? L("Anon")
     }
 
     var body: some View {
@@ -19,10 +19,10 @@ struct RoomView: View {
                     Image(systemName: "person.3")
                         .font(.system(size: 44, weight: .light))
                         .foregroundStyle(Theme.accent)
-                    Text("Nobody has spoken yet")
+                    Text(L("Nobody has spoken yet"))
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(Theme.text(scheme))
-                    Text("This is a shared room: everyone near you over Bluetooth sees it. Say something.")
+                    Text(L("This is a shared room: everyone near you over Bluetooth sees it. Say something."))
                         .font(.system(size: 13))
                         .foregroundStyle(Theme.muted(scheme))
                         .multilineTextAlignment(.center)
@@ -72,7 +72,7 @@ struct RoomView: View {
             }
 
             HStack(spacing: 10) {
-                TextField("Message everyone nearby", text: $draft)
+                TextField(L("Message everyone nearby"), text: $draft)
                     .textFieldStyle(.plain)
                     .padding(.vertical, 11).padding(.horizontal, 14)
                     .background(Theme.surface(scheme))

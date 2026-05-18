@@ -17,8 +17,8 @@ struct ChatsListView: View {
     private func preview(_ m: ChatMessage) -> String {
         switch m.kind {
         case .text:  return m.text
-        case .image: return "Photo"
-        case .audio: return "Voice message"
+        case .image: return L("Photo")
+        case .audio: return L("Voice message")
         }
     }
 
@@ -56,10 +56,10 @@ struct ChatsListView: View {
             Image(systemName: "bubble.left.and.bubble.right")
                 .font(.system(size: 46, weight: .light))
                 .foregroundStyle(Theme.accent)
-            Text("No chats yet")
+            Text(L("No chats yet"))
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(Theme.text(scheme))
-            Text("Find people on the radar and say hi. Chats are saved on this phone so they are still here next time.")
+            Text(L("Find people on the radar and say hi. Chats are saved on this phone so they are still here next time."))
                 .font(.system(size: 13))
                 .foregroundStyle(Theme.muted(scheme))
                 .multilineTextAlignment(.center)
@@ -101,7 +101,7 @@ struct ChatsListView: View {
                         .font(.system(size: 12))
                         .foregroundStyle(Theme.muted(scheme))
                 }
-                Text((c.last.mine ? "You: " : "") + preview(c.last))
+                Text(c.last.mine ? L("You: %@", preview(c.last)) : preview(c.last))
                     .font(.system(size: 14))
                     .foregroundStyle(Theme.muted(scheme))
                     .lineLimit(1)
@@ -121,18 +121,18 @@ struct ChatsListView: View {
         .contentShape(Rectangle())
         .contextMenu {
             Button { ble.togglePin(c.id) } label: {
-                Label(isPinned ? "Unpin" : "Pin to top",
+                Label(isPinned ? L("Unpin") : L("Pin to top"),
                       systemImage: isPinned ? "pin.slash" : "pin")
             }
             Button { ble.toggleMute(c.id) } label: {
-                Label(ble.isMuted(c.id) ? "Unmute" : "Mute",
+                Label(ble.isMuted(c.id) ? L("Unmute") : L("Mute"),
                       systemImage: ble.isMuted(c.id) ? "bell" : "bell.slash")
             }
             Button(role: .destructive) { ble.deleteConversation(c.id) } label: {
-                Label("Delete chat", systemImage: "trash")
+                Label(L("Delete chat"), systemImage: "trash")
             }
             Button(role: .destructive) { ble.block(c.id) } label: {
-                Label("Block", systemImage: "hand.raised")
+                Label(L("Block"), systemImage: "hand.raised")
             }
         }
     }
