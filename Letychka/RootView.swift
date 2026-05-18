@@ -197,9 +197,11 @@ struct RootView: View {
                                      : L("Signed in as %@", appleUserName))
                                     .font(.system(size: 14, weight: .semibold))
                                     .foregroundStyle(Theme.text(scheme))
-                                Text(L("Optional. Nothing is stored on a server."))
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(Theme.muted(scheme))
+                                if !hideHints {
+                                    Text(L("Optional. Nothing is stored on a server."))
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(Theme.muted(scheme))
+                                }
                             }
                             Spacer()
                         }
@@ -231,9 +233,11 @@ struct RootView: View {
                             Button(L("Cancel"), role: .cancel) {}
                         }
                     } else {
-                        Text(L("Sign in with Apple is optional. Letychka works fully without it and stays anonymous over Bluetooth. Signing in just lets you have an account you can delete."))
-                            .font(.system(size: 12))
-                            .foregroundStyle(Theme.muted(scheme))
+                        if !hideHints {
+                            Text(L("Sign in with Apple is optional. Letychka works fully without it and stays anonymous over Bluetooth. Signing in just lets you have an account you can delete."))
+                                .font(.system(size: 12))
+                                .foregroundStyle(Theme.muted(scheme))
+                        }
                         SignInWithAppleButton(.signIn,
                             onRequest: { req in req.requestedScopes = [.fullName] },
                             onCompletion: { result in
@@ -330,9 +334,11 @@ struct RootView: View {
                     }
                 }
                 Section(L("Privacy")) {
-                    Text(L("Letychka has no account and no sign in. There is nothing to log out of: nothing about you is sent to any server. Your name, avatar and chats are stored only on this phone. Use the button below to wipe all of it."))
-                        .font(.system(size: 12))
-                        .foregroundStyle(Theme.muted(scheme))
+                    if !hideHints {
+                        Text(L("Letychka has no account and no sign in. There is nothing to log out of: nothing about you is sent to any server. Your name, avatar and chats are stored only on this phone. Use the button below to wipe all of it."))
+                            .font(.system(size: 12))
+                            .foregroundStyle(Theme.muted(scheme))
+                    }
                     Button(role: .destructive) {
                         showClearConfirm = true
                     } label: {

@@ -10,7 +10,6 @@ struct RadarView: View {
     var onTapPeer: (Peer) -> Void
 
     @State private var sweep = 0.0
-    @State private var pulse = false
     @State private var breathe = false
 
     // 0 = far, 1 = near. Kept inside 0.20...0.84 of the half so a blip and
@@ -49,13 +48,6 @@ struct RadarView: View {
                                height: side * CGFloat(i) / 4)
                 }
 
-                // Outward ping pulse.
-                Circle()
-                    .stroke(Theme.accent.opacity(0.45), lineWidth: 1.5)
-                    .frame(width: side, height: side)
-                    .scaleEffect(pulse ? 1.0 : 0.05)
-                    .opacity(pulse ? 0.0 : 0.7)
-
                 // Soft rotating sweep (accent-coloured, blurred trail).
                 Circle()
                     .fill(AngularGradient(
@@ -70,16 +62,6 @@ struct RadarView: View {
                     .blur(radius: 22)
                     .rotationEffect(.radians(sweep))
                     .clipShape(Circle())
-
-                // You, at the center.
-                ZStack {
-                    Circle().fill(Theme.accent.opacity(0.22))
-                        .frame(width: 22, height: 22)
-                    Circle().fill(Theme.accent)
-                        .frame(width: 9, height: 9)
-                        .shadow(color: Theme.accent.opacity(0.9), radius: 6)
-                }
-                .position(c)
 
                 // Peers.
                 ForEach(ble.peers) { peer in
@@ -132,9 +114,6 @@ struct RadarView: View {
         .onAppear {
             withAnimation(.linear(duration: 3.6).repeatForever(autoreverses: false)) {
                 sweep = .pi * 2
-            }
-            withAnimation(.easeOut(duration: 2.8).repeatForever(autoreverses: false)) {
-                pulse = true
             }
             withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) {
                 breathe = true

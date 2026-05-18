@@ -5,6 +5,7 @@ import SwiftUI
 /// Long-press a row to pin it (favourites stay on top) or delete it.
 struct ChatsListView: View {
     @ObservedObject var ble: BLEMessenger
+    @AppStorage("hideHints") private var hideHints = false
     @Environment(\.colorScheme) private var scheme
     var onOpen: (Peer) -> Void
 
@@ -59,11 +60,13 @@ struct ChatsListView: View {
             Text(L("No chats yet"))
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(Theme.text(scheme))
-            Text(L("Find people on the radar and say hi. Chats are saved on this phone so they are still here next time."))
-                .font(.system(size: 13))
-                .foregroundStyle(Theme.muted(scheme))
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 44)
+            if !hideHints {
+                Text(L("Find people on the radar and say hi. Chats are saved on this phone so they are still here next time."))
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.muted(scheme))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 44)
+            }
             Spacer()
             Spacer()
         }

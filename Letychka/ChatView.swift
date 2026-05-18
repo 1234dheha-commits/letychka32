@@ -166,31 +166,53 @@ struct ChatView: View {
                     .overlay(Capsule().stroke(Theme.line(scheme), lineWidth: 0.5))
                     .padding(m.mine ? .trailing : .leading, 6)
             }
-            if m.mine, m.id == lastMineID {
-                TimelineView(.periodic(from: .now, by: 5)) { _ in
-                    let st = status(m)
-                    Text(st.0)
-                        .font(.system(size: 11))
-                        .foregroundStyle(st.1 ? Color.red.opacity(0.85)
-                                              : Theme.muted(scheme))
-                        .padding(.trailing, 4)
+            if m.mine {
+                if m.id == lastMineID {
+                    TimelineView(.periodic(from: .now, by: 5)) { _ in
+                        tick(m, timed: true)
+                    }
+                } else {
+                    tick(m, timed: false)
                 }
             }
         }
     }
 
-    /// (label, isProblem) for our last message: Seen / Delivered /
-    /// Sending / Not delivered (honest about BLE: it only sends when the
-    /// other person is actually in range).
-    private func status(_ m: ChatMessage) -> (String, Bool) {
-        if m.wireID != 0, (ble.seenUpTo[peer.id] ?? 0) >= m.wireID {
-            return (L("Seen"), false)
+    private enum Tick { case sending, delivered, seen, failed }
+
+    private func tickKind(_ m: ChatMessage, timed: Bool) -> Tick {
+        if m.wireID != 0, (ble.seenUpTo[peer.id] ?? 0) >= m.wireID { return .seen }
+        if m.delivered == true { return .delivered }
+        if timed, Date().timeIntervalSince(m.date) > 25 { return .failed }
+        return .sending
+    }
+
+    /// Small status tick under our message: clock (sending), one check
+    /// (delivered), double accent check (seen), red ! (not delivered yet).
+    @ViewBuilder
+    private func tick(_ m: ChatMessage, timed: Bool) -> some View {
+        let k = tickKind(m, timed: timed)
+        HStack(spacing: 3) {
+            switch k {
+            case .sending:
+                Image(systemName: "clock")
+                    .foregroundStyle(Theme.muted(scheme))
+            case .delivered:
+                Image(systemName: "checkmark")
+                    .foregroundStyle(Theme.muted(scheme))
+            case .seen:
+                HStack(spacing: -4) {
+                    Image(systemName: "checkmark")
+                    Image(systemName: "checkmark")
+                }
+                .foregroundStyle(Theme.accent)
+            case .failed:
+                Image(systemName: "exclamationmark.circle")
+                    .foregroundStyle(.red)
+            }
         }
-        if m.delivered == true { return (L("Delivered"), false) }
-        if Date().timeIntervalSince(m.date) > 25 {
-            return (L("Not delivered. Will send when they are nearby."), true)
-        }
-        return (L("Sending..."), false)
+        .font(.system(size: 10, weight: .semibold))
+        .padding(.trailing, 4)
     }
 
     // MARK: Bubbles

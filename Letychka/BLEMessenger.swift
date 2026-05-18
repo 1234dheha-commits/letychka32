@@ -77,7 +77,7 @@ final class BLEMessenger: NSObject, ObservableObject {
 
     /// React to a message with one emoji (or "" to clear), mirror to the peer.
     func sendReaction(_ m: ChatMessage, _ emoji: String) {
-        DispatchQueue.main.async {
+        onMain {
             if let i = self.messages.firstIndex(where: { $0.id == m.id }) {
                 self.messages[i].reaction = emoji.isEmpty ? nil : emoji
                 self.persist()
@@ -397,9 +397,16 @@ final class BLEMessenger: NSObject, ObservableObject {
                            kind: image ? .image : .audio, data: blob, wireID: mid))
     }
 
+    /// Run a UI-triggered model change now (not deferred a runloop, which
+    /// made delete/edit "work every other time").
+    private func onMain(_ f: () -> Void) {
+        if Thread.isMainThread { f() }
+        else { DispatchQueue.main.sync(execute: f) }
+    }
+
     /// Delete locally; if it is our message, also tell the other phone.
     func deleteMessage(_ m: ChatMessage) {
-        DispatchQueue.main.async {
+        onMain {
             self.messages.removeAll { $0.id == m.id }
             self.persist()
         }
@@ -413,7 +420,7 @@ final class BLEMessenger: NSObject, ObservableObject {
         let t = newText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard m.mine, m.kind == .text, !t.isEmpty else { return }
         let nt = String(t.prefix(240))
-        DispatchQueue.main.async {
+        onMain {
             if let i = self.messages.firstIndex(where: { $0.id == m.id }) {
                 self.messages[i].text = nt
                 self.persist()

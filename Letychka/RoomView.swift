@@ -4,6 +4,7 @@ import SwiftUI
 /// range. Text only, no servers, broadcast to every reachable phone.
 struct RoomView: View {
     @ObservedObject var ble: BLEMessenger
+    @AppStorage("hideHints") private var hideHints = false
     @Environment(\.colorScheme) private var scheme
     @State private var draft = ""
 
@@ -22,11 +23,13 @@ struct RoomView: View {
                     Text(L("Nobody has spoken yet"))
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(Theme.text(scheme))
-                    Text(L("This is a shared room: everyone near you over Bluetooth sees it. Say something."))
-                        .font(.system(size: 13))
-                        .foregroundStyle(Theme.muted(scheme))
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 44)
+                    if !hideHints {
+                        Text(L("This is a shared room: everyone near you over Bluetooth sees it. Say something."))
+                            .font(.system(size: 13))
+                            .foregroundStyle(Theme.muted(scheme))
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 44)
+                    }
                     Spacer()
                     Spacer()
                 }
