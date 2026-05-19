@@ -60,6 +60,9 @@ final class BLEMessenger: NSObject, ObservableObject {
     @Published var langTick = 0
     /// Unseen messages in the shared Room (not tied to a person).
     @Published var roomUnread = 0
+    /// Tapped a notification: the UI opens this peer's chat / the Room.
+    @Published var pendingOpenPeer: String?
+    @Published var pendingOpenRoom = false
     /// Set by the UI so Room messages while the Room is on screen are not
     /// counted unread / do not notify.
     var roomActive = false
@@ -127,6 +130,9 @@ final class BLEMessenger: NSObject, ObservableObject {
     private var subscribers: [CBCentral] = []
     // Maps the volatile CoreBluetooth ids to our stable per-install ids.
     private var cbToStable: [String: String] = [:]
+    // Advert sightings per stable id, so one stray/echoed advertisement
+    // cannot pop a phantom blip: a real phone is seen again within seconds.
+    private var sightings: [String: (count: Int, first: Date)] = [:]
 
     /// Stable ids of people the user blocked. Persisted; blocked peers are
     /// hidden from the radar and their frames are dropped.
@@ -240,12 +246,28 @@ final class BLEMessenger: NSObject, ObservableObject {
     }
 
     /// Broadcast a message to everyone in Bluetooth range (shared room).
-    func sendRoom(_ text: String) {
+    func sendRoom(_ text: String, replyTo: UInt32 = 0) {
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty else { return }
-        broadcast(Frame.room(nick: nick, text: String(t.prefix(240))))
+        let mid = Frame.newID()
+        broadcast(Frame.room(nick: nick, text: String(t.prefix(240)),
+                             msgID: mid, replyTo: replyTo))
         appendRoom(ChatMessage(peerID: Ident.me, mine: true,
-                               text: t, date: Date()))
+                               text: t, date: Date(),
+                               wireID: mid, replyTo: replyTo))
+    }
+
+    /// React to a room message (or "" to clear); mirror to everyone nearby.
+    func sendRoomReaction(_ m: ChatMessage, _ emoji: String) {
+        onMain {
+            if let i = self.roomMessages.firstIndex(where: { $0.id == m.id }) {
+                self.roomMessages[i].reaction = emoji.isEmpty ? nil : emoji
+                self.persistRoom()
+            }
+        }
+        if m.wireID != 0 {
+            broadcast(Frame.roomReact(msgID: m.wireID, emoji: emoji))
+        }
     }
 
     private func appendRoom(_ m: ChatMessage) {
@@ -305,16 +327,31 @@ final class BLEMessenger: NSObject, ObservableObject {
                 }
             // Drop people who walked away / turned Bluetooth off even when no
             // new scan callbacks arrive, so the radar does not keep ghosts.
-            pruneTimer = Timer.scheduledTimer(withTimeInterval: 3,
+            pruneTimer = Timer.scheduledTimer(withTimeInterval: 2,
                                               repeats: true) { [weak self] _ in
                 guard let self else { return }
-                let cutoff = Date().addingTimeInterval(-9)
+                // Drop ghosts faster: a real nearby phone re-advertises every
+                // couple of seconds, so 7s with no sighting means it is gone.
+                let cutoff = Date().addingTimeInterval(-7)
                 let before = self.peers.count
                 self.peers.removeAll { $0.lastSeen < cutoff }
                 if self.peers.count != before {
                     self.discovered = self.discovered.filter { k, _ in
                         self.peers.contains { $0.id == k }
                     }
+                }
+                self.sightings = self.sightings.filter {
+                    Date().timeIntervalSince($0.value.first) < 6
+                }
+                // Recover a wedged link: a central write whose
+                // didWriteValueFor never came back (link half-died with no
+                // disconnect) would otherwise pin the queue and leave the
+                // message stuck on "Sending..." forever though it arrived.
+                let wedge = Date().addingTimeInterval(-5)
+                for (pid, since) in self.inflightSince where since < wedge {
+                    self.inflight.remove(pid)
+                    self.inflightSince[pid] = nil
+                    self.pump(pid)
                 }
                 // Abandon stalled incoming media (peer left mid-transfer) so
                 // the "Receiving media %" bar does not hang forever.
@@ -377,9 +414,38 @@ final class BLEMessenger: NSObject, ObservableObject {
         case .audio: c.body = L("Voice message")
         }
         c.sound = .default
+        c.userInfo = ["peer": m.peerID, "room": room]
         UNUserNotificationCenter.current().add(
             UNNotificationRequest(identifier: UUID().uuidString,
                                   content: c, trigger: nil))
+    }
+
+    /// Tapped a notification (from the app delegate): tell the UI to open
+    /// that chat or the Room.
+    func openFromNotification(peer: String?, room: Bool) {
+        DispatchQueue.main.async {
+            if room { self.pendingOpenRoom = true }
+            else if let p = peer, !p.isEmpty { self.pendingOpenPeer = p }
+        }
+    }
+
+    /// App returned to the foreground: shake off anything that may have
+    /// gone stale while suspended so nothing looks broken on return.
+    func appBecameActive() {
+        guard central != nil else { return }
+        if central.state == .poweredOn, visible {
+            central.scanForPeripherals(
+                withServices: [Self.serviceUUID],
+                options: [CBCentralManagerScanOptionAllowDuplicatesKey: true])
+        }
+        let wedge = Date().addingTimeInterval(-3)
+        for (pid, since) in inflightSince where since < wedge {
+            inflight.remove(pid)
+            inflightSince[pid] = nil
+        }
+        let cutoff = Date().addingTimeInterval(-7)
+        peers.removeAll { $0.lastSeen < cutoff }
+        for k in sendQueues.keys { pump(k) }
     }
 
     func setNick(_ n: String) {
@@ -425,6 +491,9 @@ final class BLEMessenger: NSObject, ObservableObject {
     }
 
     func deleteConversation(_ peerID: String) {
+        // Tell the other phone to wipe the mutual chat too (queued and
+        // flushed later if they are not reachable right now).
+        enqueue([Frame.chatClear()], to: peerID)
         messages.removeAll { $0.peerID == peerID }
         pinned.remove(peerID)
         names[peerID] = nil
@@ -455,6 +524,10 @@ final class BLEMessenger: NSObject, ObservableObject {
 
     private var sendQueues: [String: [Data]] = [:]   // peerID -> frames FIFO
     private var inflight: Set<String> = []            // central write outstanding
+    /// When a central write went out, so a lost didWriteValueFor callback
+    /// (link half-died with no disconnect) cannot wedge the queue forever
+    /// and leave messages stuck on "Sending..." though they arrived.
+    private var inflightSince: [String: Date] = [:]
 
     func send(_ text: String, to peerID: String, replyTo: UInt32 = 0) {
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -529,6 +602,7 @@ final class BLEMessenger: NSObject, ObservableObject {
             if inflight.contains(peerID) { return }
             guard let frame = q.first else { return }
             inflight.insert(peerID)
+            inflightSince[peerID] = Date()
             p.writeValue(frame, for: c, type: .withResponse)
             return
         }
@@ -689,12 +763,44 @@ final class BLEMessenger: NSObject, ObservableObject {
                 }) { self.messages[i].text = nt; self.persist() }
             }
         case Frame.ROOM:
-            guard let msg = Wire.decode(Data(body)) else { return }
+            // New format: [4 msgID][4 replyTo][nick\u{1}text]. Tolerate the
+            // old plain "nick\u{1}text" too (body too short for the ids).
+            let rmid: UInt32, rrep: UInt32, payload: [UInt8]
+            if body.count >= 8 {
+                rmid = Frame.readU32(body, 0)
+                rrep = Frame.readU32(body, 4)
+                payload = Array(body[8...])
+            } else {
+                rmid = 0; rrep = 0; payload = body
+            }
+            guard let msg = Wire.decode(Data(payload)) else { return }
             if !msg.nick.isEmpty {
                 DispatchQueue.main.async { self.names[sid] = msg.nick }
             }
             appendRoom(ChatMessage(peerID: sid, mine: false,
-                                   text: msg.text, date: Date()))
+                                   text: msg.text, date: Date(),
+                                   wireID: rmid, replyTo: rrep))
+        case Frame.RREACT:
+            guard body.count >= 4 else { return }
+            let rid = Frame.readU32(body, 0)
+            let emoji = String(bytes: body[4...], encoding: .utf8) ?? ""
+            DispatchQueue.main.async {
+                if let i = self.roomMessages.firstIndex(where: {
+                    $0.wireID == rid
+                }) {
+                    self.roomMessages[i].reaction =
+                        emoji.isEmpty ? nil : emoji
+                    self.persistRoom()
+                }
+            }
+        case Frame.CHATCL:
+            DispatchQueue.main.async {
+                self.messages.removeAll { $0.peerID == sid }
+                self.pinned.remove(sid)
+                self.unread[sid] = nil
+                self.persist()
+                self.refreshBadge()
+            }
         case Frame.ACK:
             guard body.count >= 4 else { return }
             let aid = Frame.readU32(body, 0)
@@ -811,7 +917,24 @@ extension BLEMessenger: CBCentralManagerDelegate {
         if blocked.contains(sid) { return }
         cbToStable[cbid] = sid
         discovered[sid] = p
-        upsertPeer(id: sid, nick: nm, rssi: RSSI.intValue)
+        // Debounce: show the blip only once the same id is seen at least
+        // twice within a few seconds (a real, still-present phone), unless
+        // we already track it. Kills one-off ghost advertisements.
+        if peers.contains(where: { $0.id == sid }) {
+            upsertPeer(id: sid, nick: nm, rssi: RSSI.intValue)
+            return
+        }
+        let now = Date()
+        if var s = sightings[sid], now.timeIntervalSince(s.first) < 6 {
+            s.count += 1
+            sightings[sid] = s
+            if s.count >= 2 {
+                sightings[sid] = nil
+                upsertPeer(id: sid, nick: nm, rssi: RSSI.intValue)
+            }
+        } else {
+            sightings[sid] = (count: 1, first: now)
+        }
     }
 
     private func stable(for p: CBPeripheral) -> String {
@@ -830,6 +953,7 @@ extension BLEMessenger: CBCentralManagerDelegate {
         connected[id] = nil
         outChar[id] = nil
         inflight.remove(id)
+        inflightSince[id] = nil
         // Queued frames are kept on purpose: they flush automatically if the
         // person comes back into range (didDiscoverCharacteristicsFor pumps).
     }
@@ -840,6 +964,7 @@ extension BLEMessenger: CBCentralManagerDelegate {
         connected[id] = nil
         outChar[id] = nil
         inflight.remove(id)
+        inflightSince[id] = nil
         // Not reachable now. Frames stay queued and retry when rediscovered.
     }
 }
@@ -874,6 +999,7 @@ extension BLEMessenger: CBPeripheralDelegate {
                     error: Error?) {
         let id = stable(for: p)
         inflight.remove(id)
+        inflightSince[id] = nil
         if error == nil {
             // Confirmed: drop the head frame and continue.
             if var q = sendQueues[id], !q.isEmpty {

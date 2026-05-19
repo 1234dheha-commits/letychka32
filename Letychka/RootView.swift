@@ -77,6 +77,7 @@ struct RootView: View {
             ble.start()
             ble.setMyAvatar(Self.tinyAvatar(avatar))
             if tab == 2 { ble.openRoom() } else { ble.closeRoom() }
+            openPending()
         }
         .onChange(of: tab) { _, t in
             if t == 2 { ble.openRoom() } else { ble.closeRoom() }
@@ -91,6 +92,29 @@ struct RootView: View {
                     ble.setMyAvatar(Self.tinyAvatar(ui))
                 }
             }
+        }
+        .onChange(of: ble.pendingOpenRoom) { _, v in
+            if v { openPending() }
+        }
+        .onChange(of: ble.pendingOpenPeer) { _, v in
+            if v != nil { openPending() }
+        }
+    }
+
+    /// Consume a "tapped a notification" request: jump to that chat / Room.
+    private func openPending() {
+        if ble.pendingOpenRoom {
+            ble.pendingOpenRoom = false
+            chatPeer = nil
+            tab = 2
+            ble.openRoom()
+            return
+        }
+        if let pid = ble.pendingOpenPeer {
+            ble.pendingOpenPeer = nil
+            tab = 1
+            chatPeer = Peer(id: pid, nick: ble.names[pid] ?? L("Anon"),
+                            rssi: -65, lastSeen: Date())
         }
     }
 

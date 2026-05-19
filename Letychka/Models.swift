@@ -96,8 +96,10 @@ enum Wire {
 ///   PROFILE 8 : [utf8 nick]              (live rename)
 ///   REACT   9 : [4 msgID][utf8 emoji]    (emoji "" clears it)
 ///   SEEN   10 : [4 lastWireID]           (read receipt up to that id)
-///   ROOM   11 : [utf8 "nick\u{1}text"]   (shared nearby room broadcast)
+///   ROOM   11 : [4 msgID][4 replyTo][utf8 "nick\u{1}text"]  (shared room)
 ///   ACK    12 : [4 wireID]               (this message actually arrived)
+///   CHATCL 13 : (empty)                  (wipe our mutual chat on their side)
+///   RREACT 14 : [4 msgID][utf8 emoji]    (react to a room message)
 enum Frame {
     static let TEXT:    UInt8 = 0x01
     static let HEAD:    UInt8 = 0x02
@@ -111,6 +113,8 @@ enum Frame {
     static let SEEN:    UInt8 = 0x0A
     static let ROOM:    UInt8 = 0x0B
     static let ACK:     UInt8 = 0x0C
+    static let CHATCL:  UInt8 = 0x0D
+    static let RREACT:  UInt8 = 0x0E
 
     static let typeImage: UInt8 = 1
     static let typeAudio: UInt8 = 2
@@ -150,9 +154,15 @@ enum Frame {
     static func seen(lastWireID: UInt32) -> Data {
         wrap(SEEN, u32(lastWireID))
     }
-    static func room(nick: String, text: String) -> Data {
-        wrap(ROOM, Wire.encode(nick: nick, text: text))
+    static func room(nick: String, text: String, msgID: UInt32,
+                     replyTo: UInt32 = 0) -> Data {
+        wrap(ROOM, u32(msgID) + u32(replyTo)
+                   + Wire.encode(nick: nick, text: text))
     }
+    static func roomReact(msgID: UInt32, emoji: String) -> Data {
+        wrap(RREACT, u32(msgID) + Data(emoji.utf8))
+    }
+    static func chatClear() -> Data { wrap(CHATCL, Data()) }
     static func ack(wireID: UInt32) -> Data { wrap(ACK, u32(wireID)) }
     static func head(xfer: UInt32, total: Int, type: UInt8,
                      msgID: UInt32, nick: String) -> Data {

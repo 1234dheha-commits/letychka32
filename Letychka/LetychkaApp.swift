@@ -22,6 +22,23 @@ final class AppDelegate: NSObject, UIApplicationDelegate,
                                 @escaping (UNNotificationPresentationOptions) -> Void) {
         completionHandler([.banner, .sound, .badge])
     }
+
+    /// Tapped a notification (foreground or from a cold/background launch):
+    /// jump straight into that chat / the Room.
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                didReceive response: UNNotificationResponse,
+                                withCompletionHandler completionHandler:
+                                @escaping () -> Void) {
+        let info = response.notification.request.content.userInfo
+        let room = (info["room"] as? Bool) ?? false
+        let peer = info["peer"] as? String
+        BLEMessenger.shared.openFromNotification(peer: peer, room: room)
+        completionHandler()
+    }
+
+    func applicationDidBecomeActive(_ application: UIApplication) {
+        BLEMessenger.shared.appBecameActive()
+    }
 }
 
 @main
