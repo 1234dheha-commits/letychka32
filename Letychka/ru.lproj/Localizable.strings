@@ -65,6 +65,8 @@
 "Remove photo" = "Убрать фото";
 "Your avatar is shared over Bluetooth with people near you so they see your photo. It is tiny and never goes to any server." = "Аватар передаётся по Bluetooth людям рядом, чтобы они видели ваше фото. Он крошечный и никогда не уходит ни на какой сервер.";
 "Appearance" = "Оформление";
+"Language" = "Язык";
+"System default" = "Как в системе";
 "Hide hints" = "Скрыть подсказки";
 "Theme" = "Тема";
 "Light" = "Светлая";

@@ -7,6 +7,7 @@ struct RootView: View {
     @StateObject private var ble = BLEMessenger.shared
     @AppStorage(AppTheme.key) private var themeMode = "dark"
     @AppStorage("hideHints") private var hideHints = false
+    @AppStorage(Lang.key) private var appLang = "system"
     @Environment(\.colorScheme) private var scheme
     @State private var nickField = ""
     @State private var chatPeer: Peer?
@@ -329,6 +330,17 @@ struct RootView: View {
                             .font(.system(size: 12))
                             .foregroundStyle(Theme.muted(scheme))
                     }
+                }
+                Section(L("Language")) {
+                    Picker(L("Language"), selection: Binding(
+                        get: { appLang },
+                        set: { appLang = $0; Lang.set($0) })) {
+                        Text(L("System default")).tag("system")
+                        Text("English").tag("en")
+                        Text("Українська").tag("uk")
+                        Text("Русский").tag("ru")
+                    }
+                    .pickerStyle(.menu)
                 }
                 Section(L("Appearance")) {
                     Picker(L("Theme"), selection: $themeMode) {

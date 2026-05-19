@@ -65,6 +65,8 @@
 "Remove photo" = "Remove photo";
 "Your avatar is shared over Bluetooth with people near you so they see your photo. It is tiny and never goes to any server." = "Your avatar is shared over Bluetooth with people near you so they see your photo. It is tiny and never goes to any server.";
 "Appearance" = "Appearance";
+"Language" = "Language";
+"System default" = "System default";
 "Hide hints" = "Hide hints";
 "Theme" = "Theme";
 "Light" = "Light";

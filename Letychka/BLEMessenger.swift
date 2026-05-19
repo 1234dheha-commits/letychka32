@@ -53,6 +53,9 @@ final class BLEMessenger: NSObject, ObservableObject {
 
     var poweredOn: Bool { status == .on }
     var unreadTotal: Int { unread.values.reduce(0, +) }
+    /// Bumped when the in-app language changes, so every view (they all
+    /// observe this object) redraws in the new language without a restart.
+    @Published var langTick = 0
     /// Unseen messages in the shared Room (not tied to a person).
     @Published var roomUnread = 0
     /// Set by the UI so Room messages while the Room is on screen are not
