@@ -43,6 +43,8 @@
 	<string>Letychka uses Bluetooth to be discoverable by people near you for offline messaging.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Letychka uses the microphone to record short voice messages you send to people near you over Bluetooth.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Letychka can turn a voice message into text. Recognition runs on your device and the audio never leaves your phone.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>bluetooth-central</string>

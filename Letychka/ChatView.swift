@@ -1,6 +1,7 @@
 import SwiftUI
 import PhotosUI
 import AVFoundation
+import Speech
 import UIKit
 
 struct ChatView: View {
@@ -11,6 +12,7 @@ struct ChatView: View {
     @State private var photoItem: PhotosPickerItem?
     @StateObject private var recorder = AudioRecorder()
     @StateObject private var player = AudioPlayer()
+    @StateObject private var stt = SpeechTranscriber()
     @State private var notice: String?
     @State private var editing: ChatMessage?
     @State private var replyingTo: ChatMessage?
@@ -170,6 +172,7 @@ struct ChatView: View {
                 .padding(.horizontal, 6)
             }
             bubble(m)
+            if m.kind == .audio { transcriptView(m) }
             if let r = m.reaction {
                 Text(r)
                     .font(.system(size: 13))
@@ -289,6 +292,14 @@ struct ChatView: View {
         Button { replyingTo = m; editing = nil } label: {
             Label(L("Reply"), systemImage: "arrowshape.turn.up.left")
         }
+        if m.kind == .audio, ble.transcripts[m.id] == nil,
+           !stt.busy.contains(m.id) {
+            Button {
+                stt.transcribe(m, langCode: Lang.code, into: ble)
+            } label: {
+                Label(L("Transcribe to text"), systemImage: "text.quote")
+            }
+        }
         if m.mine && m.kind == .text {
             Button {
                 editing = m
@@ -347,6 +358,39 @@ struct ChatView: View {
             .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
         }
         .buttonStyle(.plain)
+    }
+
+    /// On-device speech-to-text shown under a voice bubble.
+    @ViewBuilder
+    private func transcriptView(_ m: ChatMessage) -> some View {
+        if stt.busy.contains(m.id) {
+            HStack(spacing: 6) {
+                ProgressView().scaleEffect(0.7)
+                Text(L("Transcribing...")).font(.system(size: 12))
+                    .foregroundStyle(Theme.muted(scheme))
+            }
+            .padding(.horizontal, 4).padding(.top, 2)
+        } else if let t = ble.transcripts[m.id] {
+            Text(t)
+                .font(.system(size: 14))
+                .foregroundStyle(Theme.text(scheme))
+                .padding(.vertical, 7).padding(.horizontal, 11)
+                .background(Theme.surface(scheme))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 12)
+                    .stroke(Theme.line(scheme), lineWidth: 0.5))
+                .frame(maxWidth: 240,
+                       alignment: m.mine ? .trailing : .leading)
+                .padding(m.mine ? .trailing : .leading, 2)
+                .textSelection(.enabled)
+        } else if let e = stt.failed[m.id] {
+            Text(e)
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.muted(scheme))
+                .frame(maxWidth: 240,
+                       alignment: m.mine ? .trailing : .leading)
+                .padding(.horizontal, 4).padding(.top, 2)
+        }
     }
 
     // MARK: Input
@@ -670,5 +714,91 @@ final class AudioPlayer: NSObject, ObservableObject, AVAudioPlayerDelegate {
 
     func audioPlayerDidFinishPlaying(_ p: AVAudioPlayer, successfully f: Bool) {
         DispatchQueue.main.async { self.playingID = nil }
+    }
+}
+
+/// Voice-to-text that stays true to the app's promise: recognition is forced
+/// ON-DEVICE (`requiresOnDeviceRecognition`), so the audio never leaves the
+/// phone and no server/internet is used. If a language has no offline model
+/// we say so honestly instead of falling back to Apple's servers.
+final class SpeechTranscriber: ObservableObject {
+    @Published var busy: Set<UUID> = []
+    @Published var failed: [UUID: String] = [:]
+
+    func transcribe(_ m: ChatMessage, langCode: String, into ble: BLEMessenger) {
+        guard m.kind == .audio, let data = m.data else { return }
+        guard !busy.contains(m.id), ble.transcripts[m.id] == nil else { return }
+        busy.insert(m.id)
+        failed[m.id] = nil
+        let locales = Self.candidateLocales(langCode)
+
+        SFSpeechRecognizer.requestAuthorization { status in
+            DispatchQueue.main.async {
+                guard status == .authorized else {
+                    self.fail(m.id, L("Allow speech recognition in Settings to transcribe"))
+                    return
+                }
+                guard let rec = Self.onDeviceRecognizer(locales) else {
+                    self.fail(m.id, L("Offline transcription is not available for this language"))
+                    return
+                }
+                let url = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("tr_\(m.id.uuidString).m4a")
+                do { try data.write(to: url) }
+                catch {
+                    self.fail(m.id, L("Could not transcribe this voice message"))
+                    return
+                }
+                let req = SFSpeechURLRecognitionRequest(url: url)
+                req.requiresOnDeviceRecognition = true
+                req.shouldReportPartialResults = false
+                if #available(iOS 16.0, *) { req.addsPunctuation = true }
+                rec.recognitionTask(with: req) { result, error in
+                    if let result, result.isFinal {
+                        let text = result.bestTranscription.formattedString
+                            .trimmingCharacters(in: .whitespacesAndNewlines)
+                        DispatchQueue.main.async {
+                            ble.transcripts[m.id] = text.isEmpty
+                                ? L("No speech recognized") : text
+                            self.busy.remove(m.id)
+                            try? FileManager.default.removeItem(at: url)
+                        }
+                    } else if error != nil {
+                        DispatchQueue.main.async {
+                            self.fail(m.id, L("Could not transcribe this voice message"))
+                            try? FileManager.default.removeItem(at: url)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func fail(_ id: UUID, _ msg: String) {
+        busy.remove(id)
+        failed[id] = msg
+    }
+
+    /// Best-guess spoken language: the chosen app language, else the phone's.
+    private static func candidateLocales(_ code: String) -> [Locale] {
+        switch code {
+        case "en": return [Locale(identifier: "en-US")]
+        case "ru": return [Locale(identifier: "ru-RU")]
+        case "uk": return [Locale(identifier: "uk-UA")]
+        default:
+            let pref = Locale.preferredLanguages.first ?? "en-US"
+            return [Locale(identifier: pref), Locale(identifier: "en-US")]
+        }
+    }
+
+    /// Only return a recognizer that can run fully offline.
+    private static func onDeviceRecognizer(_ locales: [Locale]) -> SFSpeechRecognizer? {
+        for l in locales {
+            if let r = SFSpeechRecognizer(locale: l),
+               r.isAvailable, r.supportsOnDeviceRecognition {
+                return r
+            }
+        }
+        return nil
     }
 }
