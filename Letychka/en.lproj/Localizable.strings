@@ -81,6 +81,8 @@
 "Removes your name, avatar and all chats from this phone. This cannot be undone." = "Removes your name, avatar and all chats from this phone. This cannot be undone.";
 "Receiving media %d%%" = "Receiving media %d%%";
 "%@ is typing..." = "%@ is typing...";
+"%@ is sending a photo..." = "%@ is sending a photo...";
+"%@ is recording a voice message..." = "%@ is recording a voice message...";
 "Editing message" = "Editing message";
 "Reply: %@" = "Reply: %@";
 "Could not attach that photo" = "Could not attach that photo";

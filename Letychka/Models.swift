@@ -14,6 +14,10 @@ struct Peer: Identifiable, Equatable, Hashable {
 
 enum MsgKind: String, Codable { case text, image, audio }
 
+/// What the other person is doing right now, shown as a live animated
+/// indicator. Sent inside the TYPING frame as a single byte.
+enum Activity: UInt8 { case typing = 0, photo = 1, voice = 2 }
+
 /// One chat message. Persisted on the device, keyed by the peer's stable id,
 /// so a conversation survives leaving and coming back later.
 struct ChatMessage: Identifiable, Equatable, Codable {
@@ -88,7 +92,7 @@ enum Wire {
 ///   END     4 : [4 xfer]
 ///   DEL     5 : [4 msgID]
 ///   EDIT    6 : [4 msgID][utf8 newText]
-///   TYPING  7 : (empty)
+///   TYPING  7 : [1 activity(0=typing,1=photo,2=voice)]
 ///   PROFILE 8 : [utf8 nick]              (live rename)
 ///   REACT   9 : [4 msgID][utf8 emoji]    (emoji "" clears it)
 ///   SEEN   10 : [4 lastWireID]           (read receipt up to that id)
@@ -165,7 +169,7 @@ enum Frame {
     static func edit(msgID: UInt32, text: String) -> Data {
         wrap(EDIT, u32(msgID) + Data(text.utf8))
     }
-    static func typingFrame() -> Data { wrap(TYPING, Data()) }
+    static func typingFrame(kind: UInt8 = 0) -> Data { wrap(TYPING, Data([kind])) }
     static func profile(nick: String) -> Data { wrap(PROFILE, Data(nick.utf8)) }
 
     /// Split a media blob into HEAD + CHUNK* + END frames.

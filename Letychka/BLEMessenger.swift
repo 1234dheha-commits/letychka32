@@ -36,8 +36,10 @@ final class BLEMessenger: NSObject, ObservableObject {
     @Published var incoming: [String: Int] = [:]
     /// peerID -> count of unseen incoming messages.
     @Published var unread: [String: Int] = [:]
-    /// peerID -> time we last heard "typing" from them (pruned after 5s).
+    /// peerID -> time we last heard activity from them (pruned after 5s).
     @Published var typing: [String: Date] = [:]
+    /// peerID -> what they are doing (0 typing, 1 photo, 2 voice).
+    @Published var typingKind: [String: UInt8] = [:]
     /// When false the device neither advertises nor scans: invisible + radar
     /// cleared. Lets the user disconnect from the map.
     @Published var visible = true
@@ -75,6 +77,12 @@ final class BLEMessenger: NSObject, ObservableObject {
     func isTyping(_ peerID: String) -> Bool {
         guard let t = typing[peerID] else { return false }
         return Date().timeIntervalSince(t) < 5
+    }
+
+    /// What the peer is doing right now, or nil if idle.
+    func peerActivity(_ peerID: String) -> Activity? {
+        guard isTyping(peerID) else { return nil }
+        return Activity(rawValue: typingKind[peerID] ?? 0) ?? .typing
     }
 
     func openChat(_ peerID: String) {
@@ -342,8 +350,8 @@ final class BLEMessenger: NSObject, ObservableObject {
         }
     }
 
-    func sendTyping(to peerID: String) {
-        enqueue([Frame.typingFrame()], to: peerID)
+    func sendTyping(to peerID: String, kind: Activity = .typing) {
+        enqueue([Frame.typingFrame(kind: kind.rawValue)], to: peerID)
     }
 
     private func startTypingPrune() {
@@ -353,6 +361,7 @@ final class BLEMessenger: NSObject, ObservableObject {
             guard let self else { return }
             let now = Date()
             self.typing = self.typing.filter { now.timeIntervalSince($0.value) < 5 }
+            self.typingKind = self.typingKind.filter { self.typing[$0.key] != nil }
             if self.typing.isEmpty {
                 self.typingPrune?.invalidate(); self.typingPrune = nil
             }
@@ -641,8 +650,10 @@ final class BLEMessenger: NSObject, ObservableObject {
                                data: Data(box.buf), wireID: box.msgID))
             if box.msgID != 0 { enqueue([Frame.ack(wireID: box.msgID)], to: sid) }
         case Frame.TYPING:
+            let act = body.first ?? 0
             DispatchQueue.main.async {
                 self.typing[sid] = Date()
+                self.typingKind[sid] = act
                 self.startTypingPrune()
             }
         case Frame.PROFILE:

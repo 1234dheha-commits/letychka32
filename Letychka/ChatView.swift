@@ -8,6 +8,7 @@ struct ChatView: View {
     @ObservedObject var ble: BLEMessenger
     let peer: Peer
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.dismiss) private var dismiss
     @State private var draft = ""
     @State private var photoItem: PhotosPickerItem?
     @StateObject private var recorder = AudioRecorder()
@@ -17,6 +18,7 @@ struct ChatView: View {
     @State private var editing: ChatMessage?
     @State private var replyingTo: ChatMessage?
     @State private var lastTyped = Date.distantPast
+    @State private var lastActivity = Date.distantPast
     @State private var willCancel = false
     @State private var wave: [CGFloat] = Array(repeating: 0.06, count: 26)
     private let emojis = ["👍", "❤️", "😂", "🔥", "😮", "😢"]
@@ -63,12 +65,17 @@ struct ChatView: View {
                     .padding(.horizontal, 18).padding(.top, 6)
             }
 
-            if ble.isTyping(peer.id) {
-                Text(L("%@ is typing...", peer.nick))
-                    .font(.system(size: 12))
-                    .foregroundStyle(Theme.accent)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 18).padding(.top, 6)
+            if let act = ble.peerActivity(peer.id) {
+                HStack(spacing: 7) {
+                    TypingDots()
+                    Text(activityText(act))
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.accent)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 18).padding(.top, 6)
+                .transition(.opacity)
             }
 
             if editing != nil {
@@ -109,6 +116,40 @@ struct ChatView: View {
         .background(Theme.bg(scheme).ignoresSafeArea())
         .navigationTitle(peer.nick)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button {
+                        ble.toggleMute(peer.id)
+                    } label: {
+                        Label(ble.isMuted(peer.id) ? L("Unmute") : L("Mute"),
+                              systemImage: ble.isMuted(peer.id)
+                                  ? "bell" : "bell.slash")
+                    }
+                    Button(role: .destructive) {
+                        ble.deleteConversation(peer.id)
+                        dismiss()
+                    } label: {
+                        Label(L("Delete chat"), systemImage: "trash")
+                    }
+                    if ble.isBlocked(peer.id) {
+                        Button { ble.unblock(peer.id) } label: {
+                            Label(L("Unblock"), systemImage: "hand.raised.slash")
+                        }
+                    } else {
+                        Button(role: .destructive) {
+                            ble.block(peer.id)
+                            dismiss()
+                        } label: {
+                            Label(L("Block"), systemImage: "hand.raised")
+                        }
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .foregroundStyle(Theme.accent)
+                }
+            }
+        }
         .onAppear { ble.connect(peer.id); ble.openChat(peer.id) }
         .onDisappear { ble.closeChat() }
         .onChange(of: draft) { _, v in
@@ -120,12 +161,15 @@ struct ChatView: View {
         }
         .onChange(of: photoItem) { _, item in
             guard let item else { return }
+            ble.sendTyping(to: peer.id, kind: .photo)
             Task {
                 let data = try? await item.loadTransferable(type: Data.self)
                 let blob = data.flatMap { Self.compressImage($0) }
                 await MainActor.run {
-                    if let blob { ble.sendMedia(blob, image: true, to: peer.id) }
-                    else { notice = L("Could not attach that photo") }
+                    if let blob {
+                        ble.sendTyping(to: peer.id, kind: .photo)
+                        ble.sendMedia(blob, image: true, to: peer.id)
+                    } else { notice = L("Could not attach that photo") }
                     photoItem = nil
                 }
             }
@@ -136,7 +180,18 @@ struct ChatView: View {
             wave.append(max(0.06, min(1, lv)))
         }
         .onChange(of: recorder.isRecording) { _, on in
-            if !on { wave = Array(repeating: 0.06, count: wave.count) }
+            if on {
+                lastActivity = Date()
+                ble.sendTyping(to: peer.id, kind: .voice)
+            } else {
+                wave = Array(repeating: 0.06, count: wave.count)
+            }
+        }
+        .onChange(of: recorder.elapsed) { _, _ in
+            guard recorder.isRecording,
+                  Date().timeIntervalSince(lastActivity) > 2.5 else { return }
+            lastActivity = Date()
+            ble.sendTyping(to: peer.id, kind: .voice)
         }
         .onChange(of: recorder.denied) { _, d in
             if d { notice = L("Microphone access is needed for voice messages") }
@@ -150,6 +205,14 @@ struct ChatView: View {
         case .text:  return String(m.text.prefix(50))
         case .image: return L("Photo")
         case .audio: return L("Voice message")
+        }
+    }
+
+    private func activityText(_ a: Activity) -> String {
+        switch a {
+        case .typing: return L("%@ is typing...", peer.nick)
+        case .photo:  return L("%@ is sending a photo...", peer.nick)
+        case .voice:  return L("%@ is recording a voice message...", peer.nick)
         }
     }
 
@@ -800,5 +863,24 @@ final class SpeechTranscriber: ObservableObject {
             }
         }
         return nil
+    }
+}
+
+/// Three little bouncing dots, like a real messenger's "typing" bubble.
+struct TypingDots: View {
+    @State private var on = false
+    var body: some View {
+        HStack(spacing: 3) {
+            ForEach(0..<3, id: \.self) { i in
+                Circle()
+                    .fill(Theme.accent)
+                    .frame(width: 5, height: 5)
+                    .opacity(on ? 1 : 0.25)
+                    .scaleEffect(on ? 1 : 0.6)
+                    .animation(.easeInOut(duration: 0.5).repeatForever()
+                        .delay(Double(i) * 0.15), value: on)
+            }
+        }
+        .onAppear { on = true }
     }
 }

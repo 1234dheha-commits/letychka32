@@ -81,6 +81,8 @@
 "Removes your name, avatar and all chats from this phone. This cannot be undone." = "Убирает ваше имя, аватар и все чаты с этого телефона. Отменить нельзя.";
 "Receiving media %d%%" = "Приём медиа %d%%";
 "%@ is typing..." = "%@ печатает...";
+"%@ is sending a photo..." = "%@ отправляет фото...";
+"%@ is recording a voice message..." = "%@ записывает голосовое...";
 "Editing message" = "Редактирование сообщения";
 "Reply: %@" = "Ответ: %@";
 "Could not attach that photo" = "Не удалось прикрепить это фото";
