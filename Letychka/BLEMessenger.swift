@@ -60,9 +60,6 @@ final class BLEMessenger: NSObject, ObservableObject {
     @Published var langTick = 0
     /// Unseen messages in the shared Room (not tied to a person).
     @Published var roomUnread = 0
-    /// On-device speech-to-text results, keyed by message id. In memory for
-    /// the session only (the audio itself stays the source of truth).
-    @Published var transcripts: [UUID: String] = [:]
     /// Set by the UI so Room messages while the Room is on screen are not
     /// counted unread / do not notify.
     var roomActive = false
@@ -445,7 +442,6 @@ final class BLEMessenger: NSObject, ObservableObject {
         UserDefaults.standard.removeObject(forKey: "blocked")
         roomMessages.removeAll()
         roomUnread = 0
-        transcripts.removeAll()
         avatars.removeAll()
         myAvatarBlob = nil
         sentAvatarTo.removeAll()

@@ -94,9 +94,3 @@
 "Not delivered. Will send when they are nearby." = "Not delivered. Will send when they are nearby.";
 "Release to cancel" = "Release to cancel";
 "Slide up to lock, left to cancel" = "Slide up to lock, left to cancel";
-"Transcribe to text" = "Transcribe to text";
-"Transcribing..." = "Transcribing...";
-"Could not transcribe this voice message" = "Could not transcribe this voice message";
-"Offline transcription is not available for this language" = "Offline transcription is not available for this language";
-"Allow speech recognition in Settings to transcribe" = "Allow speech recognition in Settings to transcribe";
-"No speech recognized" = "No speech recognized";

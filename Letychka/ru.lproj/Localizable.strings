@@ -94,9 +94,3 @@
 "Not delivered. Will send when they are nearby." = "Не доставлено. Отправится, когда они будут рядом.";
 "Release to cancel" = "Отпустите, чтобы отменить";
 "Slide up to lock, left to cancel" = "Вверх чтобы закрепить, влево чтобы отменить";
-"Transcribe to text" = "Расшифровать в текст";
-"Transcribing..." = "Расшифровка...";
-"Could not transcribe this voice message" = "Не удалось расшифровать это голосовое";
-"Offline transcription is not available for this language" = "Офлайн расшифровка недоступна для этого языка";
-"Allow speech recognition in Settings to transcribe" = "Разрешите распознавание речи в Настройках для расшифровки";
-"No speech recognized" = "Речь не распознана";
