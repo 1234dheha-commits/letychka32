@@ -90,3 +90,5 @@
 "Delivered" = "Доставлено";
 "Sending..." = "Отправка...";
 "Not delivered. Will send when they are nearby." = "Не доставлено. Отправится, когда они будут рядом.";
+"Release to cancel" = "Отпустите, чтобы отменить";
+"Slide up to lock, left to cancel" = "Вверх чтобы закрепить, влево чтобы отменить";

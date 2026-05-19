@@ -48,10 +48,11 @@ struct RoomView: View {
                                                 .font(.system(size: 11, weight: .semibold))
                                                 .foregroundStyle(Theme.accent)
                                         }
-                                        Text(m.text)
+                                        Text(ChatView.linkified(m.text))
                                             .font(.system(size: 15))
                                             .foregroundStyle(m.mine ? .white
                                                              : Theme.text(scheme))
+                                            .tint(m.mine ? .white : Theme.accent)
                                             .padding(.vertical, 9)
                                             .padding(.horizontal, 13)
                                             .background(m.mine ? Theme.accent

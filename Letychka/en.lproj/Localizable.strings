@@ -90,3 +90,5 @@
 "Delivered" = "Delivered";
 "Sending..." = "Sending...";
 "Not delivered. Will send when they are nearby." = "Not delivered. Will send when they are nearby.";
+"Release to cancel" = "Release to cancel";
+"Slide up to lock, left to cancel" = "Slide up to lock, left to cancel";

@@ -90,3 +90,5 @@
 "Delivered" = "Доставлено";
 "Sending..." = "Надсилання...";
 "Not delivered. Will send when they are nearby." = "Не доставлено. Надішлеться, коли вони будуть поруч.";
+"Release to cancel" = "Відпустіть, щоб скасувати";
+"Slide up to lock, left to cancel" = "Вгору щоб закріпити, ліворуч щоб скасувати";
