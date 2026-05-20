@@ -65,6 +65,13 @@ enum Ident {
         UserDefaults.standard.set(s, forKey: k)
         return s
     }()
+
+    /// Default display name when the user has not picked one yet. Stable,
+    /// unique per install (because the id is), and clearly editable.
+    static var defaultNick: String { defaultNick(for: me) }
+    static func defaultNick(for stableID: String) -> String {
+        "letychkauser#" + stableID
+    }
 }
 
 /// Wire format for a single text payload: "nick\u{1}text" (unit separator).

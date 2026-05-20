@@ -13,7 +13,8 @@ struct RoomView: View {
     private let emojis = ["👍", "❤️", "😂", "🔥", "😮", "😢"]
 
     private func nickOf(_ m: ChatMessage) -> String {
-        m.mine ? ble.nick : (ble.names[m.peerID] ?? L("Anon"))
+        if m.mine { return ble.nick }
+        return ble.names[m.peerID] ?? Ident.defaultNick(for: m.peerID)
     }
 
     private func snippet(_ m: ChatMessage) -> String {
@@ -40,7 +41,7 @@ struct RoomView: View {
             for m in matches.reversed() {
                 let idRange = m.range(at: 1)
                 let id = work.substring(with: idRange).lowercased()
-                let display = "@" + (names[id] ?? L("Anon"))
+                let display = "@" + (names[id] ?? Ident.defaultNick(for: id))
                 work = work.replacingCharacters(in: m.range,
                                                 with: display) as NSString
             }

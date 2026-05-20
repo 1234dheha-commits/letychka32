@@ -260,7 +260,7 @@ struct RootView: View {
                     AvatarStore.clear()
                     avatar = nil
                     avatarItem = nil
-                    nickField = "Anon"
+                    nickField = Ident.defaultNick
                 }
             } message: {
                 Text(L("Removes your name, avatar and all chats from this phone. This cannot be undone."))
@@ -281,7 +281,7 @@ struct RootView: View {
                     }
                 }
                 Section(L("Your name")) {
-                    TextField(L("Anon"), text: $nickField)
+                    TextField(Ident.defaultNick, text: $nickField)
                         .onSubmit { ble.setNick(nickField) }
                     Text(joinedText)
                         .font(.system(size: 12))
@@ -420,7 +420,9 @@ struct RootView: View {
         if let pid = ble.pendingOpenPeer {
             ble.pendingOpenPeer = nil
             tab = 1
-            chatsPeer = Peer(id: pid, nick: ble.names[pid] ?? L("Anon"),
+            chatsPeer = Peer(id: pid,
+                             nick: ble.names[pid]
+                                 ?? Ident.defaultNick(for: pid),
                              rssi: -65, lastSeen: Date())
         }
     }

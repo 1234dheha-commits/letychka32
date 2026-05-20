@@ -27,7 +27,7 @@ final class BLEMessenger: NSObject, ObservableObject {
     /// Shared "nearby room": one common chat for everyone in BLE range.
     @Published var roomMessages: [ChatMessage] = []
     @Published var status: BTStatus = .unknown
-    @Published var nick: String = UserDefaults.standard.string(forKey: "nick") ?? "Anon"
+    @Published var nick: String = UserDefaults.standard.string(forKey: "nick") ?? Ident.defaultNick
     /// Pinned conversations (peer ids). Session-scoped like everything else.
     @Published var pinned: Set<String> = []
     /// Last known nickname per peer id, so the chat list keeps a name even
@@ -441,7 +441,7 @@ final class BLEMessenger: NSObject, ObservableObject {
         let c = UNMutableNotificationContent()
         c.title = "Letychka"
         let display = nick.trimmingCharacters(in: .whitespaces).isEmpty
-            ? (names[id] ?? L("Anon"))
+            ? (names[id] ?? Ident.defaultNick(for: id))
             : nick
         c.body = L("%@ is nearby", display)
         c.sound = .default
@@ -480,7 +480,7 @@ final class BLEMessenger: NSObject, ObservableObject {
 
     func setNick(_ n: String) {
         let v = n.trimmingCharacters(in: .whitespacesAndNewlines)
-        nick = v.isEmpty ? "Anon" : String(v.prefix(20))
+        nick = v.isEmpty ? Ident.defaultNick : String(v.prefix(30))
         UserDefaults.standard.set(nick, forKey: "nick")
         restartAdvertising()
         broadcast(Frame.profile(nick: nick))   // live rename on the other side
@@ -504,7 +504,8 @@ final class BLEMessenger: NSObject, ObservableObject {
         let list = groups.compactMap { (pid, msgs) -> Convo? in
             if self.blocked.contains(pid) { return nil }
             guard let last = msgs.max(by: { $0.date < $1.date }) else { return nil }
-            let nm = names[pid] ?? peers.first(where: { $0.id == pid })?.nick ?? "Anon"
+            let nm = names[pid] ?? peers.first(where: { $0.id == pid })?.nick
+                  ?? Ident.defaultNick(for: pid)
             return Convo(id: pid, nick: nm, last: last,
                          online: online.contains(pid))
         }
@@ -1020,8 +1021,11 @@ final class BLEMessenger: NSObject, ObservableObject {
                 self.peers[i].lastSeen = Date()
                 if !nick.isEmpty { self.peers[i].nick = nick }
             } else {
-                self.peers.append(Peer(id: id, nick: nick.isEmpty ? "Anon" : nick,
-                                       rssi: rssi == 0 ? -65 : rssi, lastSeen: Date()))
+                self.peers.append(Peer(id: id,
+                                       nick: nick.isEmpty
+                                           ? Ident.defaultNick(for: id) : nick,
+                                       rssi: rssi == 0 ? -65 : rssi,
+                                       lastSeen: Date()))
                 self.maybeNotifyNearby(id: id, nick: nick)
             }
             // Drop peers not seen recently (also handled by the prune timer).
