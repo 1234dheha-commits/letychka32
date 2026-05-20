@@ -135,5 +135,11 @@
 "e.g. Friday plans" = "e.g. Friday plans";
 "you" = "you";
 "Share this so others can find you in Global. It is created automatically when Global mode is enabled." = "Share this so others can find you in Global. It is created automatically when Global mode is enabled.";
+"Share this so others can find you in Global. Changing it works as long as the new name is not taken." = "Share this so others can find you in Global. Changing it works as long as the new name is not taken.";
+"Name cannot be empty." = "Name cannot be empty.";
+"Name is too short (min 3 letters)." = "Name is too short (min 3 letters).";
+"Name is too long (max 30 letters)." = "Name is too long (max 30 letters).";
+"That name is already in use." = "That name is already in use.";
+"Could not reach the server. Try again." = "Could not reach the server. Try again.";
 "You will stop receiving messages. You can be added back by an admin." = "You will stop receiving messages. You can be added back by an admin.";
 "Global mode is in early beta. Direct chats, search by username and groups work. Messages travel through Supabase (EU) and are not yet end-to-end encrypted, so the server operator could read them. Bluetooth mode stays fully offline and end-to-end encrypted as before." = "Global mode is in early beta. Direct chats, search by username and groups work. Messages travel through Supabase (EU) and are not yet end-to-end encrypted, so the server operator could read them. Bluetooth mode stays fully offline and end-to-end encrypted as before.";

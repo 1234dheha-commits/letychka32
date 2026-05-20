@@ -77,6 +77,47 @@ final class Global: ObservableObject {
         }
     }
 
+    enum RenameResult: Equatable {
+        case ok
+        case empty
+        case tooShort
+        case tooLong
+        case taken
+        case offline
+    }
+
+    /// Rename my own global username. The `profiles.username` column is
+    /// UNIQUE, so we map a Postgres 23505 unique-violation to .taken so the
+    /// UI can show a friendly "name already in use" message instead of a
+    /// raw server error.
+    func renameMe(_ newName: String) async -> RenameResult {
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return .empty }
+        if trimmed.count < 3 { return .tooShort }
+        if trimmed.count > 30 { return .tooLong }
+        guard let myID = me?.id else { return .offline }
+        struct Update: Encodable { let username: String }
+        do {
+            try await Supa.shared.client
+                .from("profiles")
+                .update(Update(username: trimmed))
+                .eq("id", value: myID)
+                .execute()
+            await refresh()
+            return .ok
+        } catch {
+            // PostgrestError surfaces the message; treat any error that
+            // mentions duplicate / 23505 / unique as a uniqueness collision.
+            let s = "\(error)".lowercased()
+            if s.contains("duplicate") || s.contains("23505")
+                || s.contains("unique") {
+                return .taken
+            }
+            print("Global.renameMe failed: \(error)")
+            return .offline
+        }
+    }
+
     /// Find profiles whose username starts with `prefix` (case-insensitive).
     /// Hides ourselves from the result so we cannot start a chat with self.
     func searchUsers(prefix: String) async -> [Profile] {

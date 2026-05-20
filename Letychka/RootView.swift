@@ -25,6 +25,9 @@ struct RootView: View {
     @AppStorage("appleUserName") private var appleUserName = ""
     @State private var signInError: String?
     @State private var showDeleteAccountConfirm = false
+    @State private var globalNickField: String = ""
+    @State private var globalNickError: String?
+    @State private var globalNickSaving = false
 
     var body: some View {
         Group {
@@ -318,15 +321,24 @@ struct RootView: View {
                 }
                 if netMode != "ble" {
                     Section(L("Your global username")) {
-                        HStack {
-                            Text(global.me?.username
-                                 ?? Ident.defaultNick)
-                                .font(.system(size: 15,
-                                              weight: .semibold))
-                                .foregroundStyle(Theme.text(scheme))
-                                .textSelection(.enabled)
-                                .lineLimit(1)
-                            Spacer()
+                        HStack(spacing: 8) {
+                            TextField(Ident.defaultNick,
+                                      text: $globalNickField)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .submitLabel(.done)
+                                .onSubmit { saveGlobalNick() }
+                            if globalNickField != (global.me?.username ?? "")
+                                && !globalNickField.isEmpty {
+                                if globalNickSaving {
+                                    ProgressView()
+                                } else {
+                                    Button(L("Save")) { saveGlobalNick() }
+                                        .font(.system(size: 14,
+                                                      weight: .semibold))
+                                        .foregroundStyle(Theme.accent)
+                                }
+                            }
                             Button {
                                 UIPasteboard.general.string =
                                     global.me?.username
@@ -334,11 +346,33 @@ struct RootView: View {
                             } label: {
                                 Image(systemName: "doc.on.doc")
                             }
+                            .buttonStyle(.borderless)
+                        }
+                        if let err = globalNickError {
+                            Text(err)
+                                .font(.system(size: 12))
+                                .foregroundStyle(.red)
                         }
                         if !hideHints {
-                            Text(L("Share this so others can find you in Global. It is created automatically when Global mode is enabled."))
+                            Text(L("Share this so others can find you in Global. Changing it works as long as the new name is not taken."))
                                 .font(.system(size: 12))
                                 .foregroundStyle(Theme.muted(scheme))
+                        }
+                    }
+                    .onAppear {
+                        // First time the section appears (or whenever the
+                        // server reveals a new username), prime the editor.
+                        if globalNickField.isEmpty,
+                           let u = global.me?.username { globalNickField = u }
+                    }
+                    .onChange(of: global.me?.username) { old, new in
+                        // Sync the field with the server only if the user
+                        // hasn't edited it (still matches the old value or
+                        // is empty). Otherwise leave their draft alone.
+                        guard let new else { return }
+                        if globalNickField.isEmpty
+                            || globalNickField == (old ?? "") {
+                            globalNickField = new
                         }
                     }
                 }
@@ -470,6 +504,37 @@ struct RootView: View {
     }
 
     // MARK: Helpers
+
+    /// Submit a username change to the server. The local @State is updated
+    /// optimistically on success and the error label is cleared. On error
+    /// we revert the field to the server value so the UI stays truthful.
+    private func saveGlobalNick() {
+        let candidate = globalNickField
+        guard candidate != (global.me?.username ?? "") else { return }
+        globalNickSaving = true
+        globalNickError = nil
+        Task {
+            let r = await Global.shared.renameMe(candidate)
+            await MainActor.run {
+                globalNickSaving = false
+                switch r {
+                case .ok:
+                    globalNickError = nil
+                case .empty:
+                    globalNickError = L("Name cannot be empty.")
+                    if let u = global.me?.username { globalNickField = u }
+                case .tooShort:
+                    globalNickError = L("Name is too short (min 3 letters).")
+                case .tooLong:
+                    globalNickError = L("Name is too long (max 30 letters).")
+                case .taken:
+                    globalNickError = L("That name is already in use.")
+                case .offline:
+                    globalNickError = L("Could not reach the server. Try again.")
+                }
+            }
+        }
+    }
 
     /// Consume a "tapped a notification" request: jump to that chat / Room.
     private func openPending() {

@@ -135,5 +135,11 @@
 "e.g. Friday plans" = "например, Планы на пятницу";
 "you" = "вы";
 "Share this so others can find you in Global. It is created automatically when Global mode is enabled." = "Поделитесь, чтобы вас могли найти в Глобальном режиме. Имя создаётся автоматически при включении режима.";
+"Share this so others can find you in Global. Changing it works as long as the new name is not taken." = "Поделитесь, чтобы вас могли найти в Глобальном режиме. Менять можно, если новое имя ещё не занято.";
+"Name cannot be empty." = "Имя не может быть пустым.";
+"Name is too short (min 3 letters)." = "Имя слишком короткое (минимум 3 символа).";
+"Name is too long (max 30 letters)." = "Имя слишком длинное (максимум 30 символов).";
+"That name is already in use." = "Это имя уже занято.";
+"Could not reach the server. Try again." = "Не удалось связаться с сервером. Попробуйте ещё раз.";
 "You will stop receiving messages. You can be added back by an admin." = "Вы перестанете получать сообщения. Админ сможет вернуть вас обратно.";
 "Global mode is in early beta. Direct chats, search by username and groups work. Messages travel through Supabase (EU) and are not yet end-to-end encrypted, so the server operator could read them. Bluetooth mode stays fully offline and end-to-end encrypted as before." = "Глобальный режим в раннем бета-доступе. Личные чаты, поиск по имени и группы работают. Сообщения идут через Supabase (ЕС) и пока НЕ зашифрованы сквозным шифрованием, поэтому оператор сервера может их читать. Режим Bluetooth остаётся полностью офлайн и со сквозным шифрованием, как раньше.";
