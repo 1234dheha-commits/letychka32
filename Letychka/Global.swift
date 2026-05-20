@@ -284,7 +284,7 @@ final class Global: ObservableObject {
                                   user_id: myID, role: "owner"))
                 .execute()
             for m in members where m.id != myID {
-                try? await Supa.shared.client
+                _ = try? await Supa.shared.client
                     .from("chat_members")
                     .insert(NewMember(chat_id: newID,
                                       user_id: m.id, role: "member"))

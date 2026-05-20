@@ -56,6 +56,12 @@ struct QRScannerView: UIViewControllerRepresentable {
 /// scanner (DataScannerViewController requires an Apple Neural Engine
 /// device and iOS 16+). Used to hide the button on unsupported hardware
 /// instead of crashing on instantiation.
+///
+/// `isSupported` reads two `@MainActor` properties on
+/// DataScannerViewController, so the whole helper is main-actor itself.
+/// SwiftUI bodies and ToolbarItems are already main-isolated so callers
+/// don't need to do anything special.
+@MainActor
 enum QRScanner {
     static var isSupported: Bool {
         DataScannerViewController.isSupported
