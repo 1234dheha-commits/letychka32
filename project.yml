@@ -5,6 +5,10 @@ options:
     iOS: "17.0"
   createIntermediateGroups: true
   developmentLanguage: en
+packages:
+  Supabase:
+    url: https://github.com/supabase/supabase-swift
+    from: "2.0.0"
 settings:
   base:
     MARKETING_VERSION: "1.0"
@@ -18,6 +22,9 @@ targets:
     platform: iOS
     sources:
       - path: Letychka
+    dependencies:
+      - package: Supabase
+        product: Supabase
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: recode.letychka32
