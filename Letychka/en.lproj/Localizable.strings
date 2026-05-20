@@ -100,5 +100,10 @@
 "Sending media %d%%" = "Sending media %d%%";
 "Profile" = "Profile";
 "Everyone in Bluetooth range" = "Everyone in Bluetooth range";
+"Network mode" = "Network mode";
+"Bluetooth only" = "Bluetooth only";
+"Global only" = "Global only";
+"Bluetooth and Global" = "Bluetooth and Global";
+"Global mode is in progress: account, search and online groups are added step by step. Until then Bluetooth keeps working as before." = "Global mode is in progress: account, search and online groups are added step by step. Until then Bluetooth keeps working as before.";
 "Notify about people nearby" = "Notify about people nearby";
 "A small notification when someone new appears in Bluetooth range. Off by default." = "A small notification when someone new appears in Bluetooth range. Off by default.";

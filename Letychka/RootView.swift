@@ -8,6 +8,7 @@ struct RootView: View {
     @AppStorage(AppTheme.key) private var themeMode = "dark"
     @AppStorage("hideHints") private var hideHints = false
     @AppStorage("nearbyNotify") private var nearbyNotify = false
+    @AppStorage("netMode") private var netMode = "ble"   // ble | global | both
     @AppStorage(Lang.key) private var appLang = "system"
     @Environment(\.colorScheme) private var scheme
     @State private var nickField = ""
@@ -180,6 +181,19 @@ struct RootView: View {
     private var settingsTab: some View {
         NavigationStack {
             Form {
+                Section(L("Network mode")) {
+                    Picker(L("Network mode"), selection: $netMode) {
+                        Text(L("Bluetooth only")).tag("ble")
+                        Text(L("Global only")).tag("global")
+                        Text(L("Bluetooth and Global")).tag("both")
+                    }
+                    .pickerStyle(.menu)
+                    if !hideHints {
+                        Text(L("Global mode is in progress: account, search and online groups are added step by step. Until then Bluetooth keeps working as before."))
+                            .font(.system(size: 12))
+                            .foregroundStyle(Theme.muted(scheme))
+                    }
+                }
                 Section(L("Nearby")) {
                     Toggle(L("Show me on the radar"), isOn: Binding(
                         get: { ble.visible },

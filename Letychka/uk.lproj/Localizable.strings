@@ -100,5 +100,10 @@
 "Sending media %d%%" = "Надсилання медіа %d%%";
 "Profile" = "Профіль";
 "Everyone in Bluetooth range" = "Усі в зоні Bluetooth";
+"Network mode" = "Режим зв'язку";
+"Bluetooth only" = "Тільки Bluetooth";
+"Global only" = "Тільки Глобальний";
+"Bluetooth and Global" = "Bluetooth і Глобальний";
+"Global mode is in progress: account, search and online groups are added step by step. Until then Bluetooth keeps working as before." = "Глобальний режим у розробці: акаунт, пошук і онлайн-групи додаємо поетапно. Поки Bluetooth працює як раніше.";
 "Notify about people nearby" = "Сповіщати про людей поруч";
 "A small notification when someone new appears in Bluetooth range. Off by default." = "Невелике сповіщення, коли хтось новий з'являється в зоні Bluetooth. За замовчуванням вимкнено.";

@@ -100,5 +100,10 @@
 "Sending media %d%%" = "Отправка медиа %d%%";
 "Profile" = "Профиль";
 "Everyone in Bluetooth range" = "Все в зоне Bluetooth";
+"Network mode" = "Режим связи";
+"Bluetooth only" = "Только Bluetooth";
+"Global only" = "Только Глобальный";
+"Bluetooth and Global" = "Bluetooth и Глобальный";
+"Global mode is in progress: account, search and online groups are added step by step. Until then Bluetooth keeps working as before." = "Глобальный режим в разработке: аккаунт, поиск и онлайн-группы добавляем поэтапно. Пока Bluetooth работает как раньше.";
 "Notify about people nearby" = "Уведомлять о людях рядом";
 "A small notification when someone new appears in Bluetooth range. Off by default." = "Маленькое уведомление, когда кто-то новый появляется в зоне Bluetooth. По умолчанию выключено.";
