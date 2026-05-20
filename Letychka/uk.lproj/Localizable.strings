@@ -95,3 +95,6 @@
 "Release to cancel" = "Відпустіть, щоб скасувати";
 "Slide up to lock, left to cancel" = "Вгору щоб закріпити, ліворуч щоб скасувати";
 "Mention" = "Згадати";
+"%@ is nearby" = "%@ поруч";
+"Notify about people nearby" = "Сповіщати про людей поруч";
+"A small notification when someone new appears in Bluetooth range. Off by default." = "Невелике сповіщення, коли хтось новий з'являється в зоні Bluetooth. За замовчуванням вимкнено.";

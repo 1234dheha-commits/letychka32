@@ -95,3 +95,6 @@
 "Release to cancel" = "Release to cancel";
 "Slide up to lock, left to cancel" = "Slide up to lock, left to cancel";
 "Mention" = "Mention";
+"%@ is nearby" = "%@ is nearby";
+"Notify about people nearby" = "Notify about people nearby";
+"A small notification when someone new appears in Bluetooth range. Off by default." = "A small notification when someone new appears in Bluetooth range. Off by default.";

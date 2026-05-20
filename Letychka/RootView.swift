@@ -7,6 +7,7 @@ struct RootView: View {
     @StateObject private var ble = BLEMessenger.shared
     @AppStorage(AppTheme.key) private var themeMode = "dark"
     @AppStorage("hideHints") private var hideHints = false
+    @AppStorage("nearbyNotify") private var nearbyNotify = false
     @AppStorage(Lang.key) private var appLang = "system"
     @Environment(\.colorScheme) private var scheme
     @State private var nickField = ""
@@ -318,6 +319,13 @@ struct RootView: View {
                         set: { ble.setVisible($0) }))
                     if !hideHints {
                         Text(L("Turn off to disconnect from the map. You become invisible to people nearby and your radar clears. Turn it back on to reconnect."))
+                            .font(.system(size: 12))
+                            .foregroundStyle(Theme.muted(scheme))
+                    }
+                    Toggle(L("Notify about people nearby"),
+                           isOn: $nearbyNotify)
+                    if !hideHints {
+                        Text(L("A small notification when someone new appears in Bluetooth range. Off by default."))
                             .font(.system(size: 12))
                             .foregroundStyle(Theme.muted(scheme))
                     }

@@ -133,6 +133,9 @@ final class BLEMessenger: NSObject, ObservableObject {
     // Advert sightings per stable id, so one stray/echoed advertisement
     // cannot pop a phantom blip: a real phone is seen again within seconds.
     private var sightings: [String: (count: Int, first: Date)] = [:]
+    // Already-notified about being nearby this session, so a flaky link
+    // re-appearing every few minutes does not spam notifications.
+    private var notifiedNearby: Set<String> = []
 
     /// Stable ids of people the user blocked. Persisted; blocked peers are
     /// hidden from the radar and their frames are dropped.
@@ -420,6 +423,28 @@ final class BLEMessenger: NSObject, ObservableObject {
                                   content: c, trigger: nil))
     }
 
+    /// Optional notification when a NEW person shows up nearby. Off by
+    /// default (would be spammy on a busy street); user enables it in
+    /// Settings ("Notify about people nearby").
+    private func maybeNotifyNearby(id: String, nick: String) {
+        guard notifOK,
+              UserDefaults.standard.bool(forKey: "nearbyNotify"),
+              !blocked.contains(id),
+              !muted.contains(id),
+              !notifiedNearby.contains(id) else { return }
+        notifiedNearby.insert(id)
+        let c = UNMutableNotificationContent()
+        c.title = "Letychka"
+        let display = nick.trimmingCharacters(in: .whitespaces).isEmpty
+            ? (names[id] ?? L("Anon"))
+            : nick
+        c.body = L("%@ is nearby", display)
+        c.sound = .default
+        UNUserNotificationCenter.current().add(
+            UNNotificationRequest(identifier: "nearby-" + id,
+                                  content: c, trigger: nil))
+    }
+
     /// Tapped a notification (from the app delegate): tell the UI to open
     /// that chat or the Room.
     func openFromNotification(peer: String?, room: Bool) {
@@ -671,9 +696,17 @@ final class BLEMessenger: NSObject, ObservableObject {
             let rep = Frame.readU32(body, 4)
             guard let msg = Wire.decode(Data(body[8...])) else { return }
             if !msg.nick.isEmpty { upsertPeer(id: sid, nick: msg.nick, rssi: 0) }
-            append(ChatMessage(peerID: sid, mine: false,
-                               text: msg.text, date: Date(),
-                               wireID: mid, replyTo: rep))
+            // De-dup: same wireID from the same sender = already received,
+            // a retry after a flaky link. Re-ACK so the sender stops
+            // resending, but don't add a duplicate message.
+            let dup = mid != 0 && messages.contains(where: {
+                !$0.mine && $0.peerID == sid && $0.wireID == mid
+            })
+            if !dup {
+                append(ChatMessage(peerID: sid, mine: false,
+                                   text: msg.text, date: Date(),
+                                   wireID: mid, replyTo: rep))
+            }
             if mid != 0 { enqueue([Frame.ack(wireID: mid)], to: sid) }
         case Frame.HEAD:
             guard body.count >= 13 else { return }
@@ -714,10 +747,16 @@ final class BLEMessenger: NSObject, ObservableObject {
                 break
             }
             clearIncoming(sid)
-            append(ChatMessage(peerID: box.peer, mine: false, text: "",
-                               date: Date(),
-                               kind: box.type == Frame.typeImage ? .image : .audio,
-                               data: Data(box.buf), wireID: box.msgID))
+            // De-dup: same wireID from the same sender = retry, skip append.
+            let dupMedia = box.msgID != 0 && messages.contains(where: {
+                !$0.mine && $0.peerID == box.peer && $0.wireID == box.msgID
+            })
+            if !dupMedia {
+                append(ChatMessage(peerID: box.peer, mine: false, text: "",
+                                   date: Date(),
+                                   kind: box.type == Frame.typeImage ? .image : .audio,
+                                   data: Data(box.buf), wireID: box.msgID))
+            }
             if box.msgID != 0 { enqueue([Frame.ack(wireID: box.msgID)], to: sid) }
         case Frame.TYPING:
             let act = body.first ?? 0
@@ -844,6 +883,7 @@ final class BLEMessenger: NSObject, ObservableObject {
             } else {
                 self.peers.append(Peer(id: id, nick: nick.isEmpty ? "Anon" : nick,
                                        rssi: rssi == 0 ? -65 : rssi, lastSeen: Date()))
+                self.maybeNotifyNearby(id: id, nick: nick)
             }
             // Drop peers not seen recently (also handled by the prune timer).
             let cutoff = Date().addingTimeInterval(-9)
@@ -986,7 +1026,27 @@ extension BLEMessenger: CBPeripheralDelegate {
             p.setNotifyValue(true, for: c)
             pump(id)
             maybeSendAvatar(to: id)
+            resendUndelivered(to: id)
         }
+    }
+
+    /// On reconnect, replay any of our text messages to this peer that
+    /// never got an ACK. The receiver de-dups by wireID, so this is safe.
+    /// Limited to the last 24 hours and 20 messages, text only.
+    private func resendUndelivered(to peerID: String) {
+        let cutoff = Date().addingTimeInterval(-86_400)
+        let pending = messages.filter {
+            $0.mine && $0.peerID == peerID && $0.kind == .text
+                && $0.wireID != 0 && $0.delivered != true && $0.date > cutoff
+        }.suffix(20)
+        guard !pending.isEmpty else { return }
+        var frames: [Data] = []
+        for m in pending {
+            frames.append(Frame.text(nick: nick, text: m.text,
+                                     msgID: m.wireID,
+                                     replyTo: m.replyTo ?? 0))
+        }
+        enqueue(frames, to: peerID)
     }
 
     func peripheral(_ p: CBPeripheral, didUpdateValueFor c: CBCharacteristic,
