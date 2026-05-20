@@ -554,6 +554,10 @@ final class BLEMessenger: NSObject, ObservableObject {
 
     private var sendQueues: [String: [Data]] = [:]   // peerID -> frames FIFO
     private var inflight: Set<String> = []            // central write outstanding
+    /// Per-peer maximum CHUNK content size derived from the negotiated BLE
+    /// MTU (CBPeripheral.maximumWriteValueLength) minus our envelope and
+    /// AES-GCM overhead. Falls back to `Frame.chunkBytes` when unknown.
+    private var maxChunk: [String: Int] = [:]
 
     // Per-session ephemeral X25519 key. Both peers send their public key
     // in a KEYEX frame; both derive the same AES-256-GCM session key.
@@ -588,7 +592,9 @@ final class BLEMessenger: NSObject, ObservableObject {
         guard !blob.isEmpty else { return }
         let type = image ? Frame.typeImage : Frame.typeAudio
         let mid = Frame.newID()
-        let fs = Frame.frames(for: blob, type: type, msgID: mid, nick: nick)
+        let cs = maxChunk[peerID] ?? Frame.chunkBytes
+        let fs = Frame.frames(for: blob, type: type, msgID: mid,
+                              nick: nick, chunk: cs)
         outgoingTotal[peerID, default: 0] += fs.count
         outgoing[peerID] = (outgoing[peerID] ?? 0)
         enqueue(fs, to: peerID)
@@ -1166,6 +1172,13 @@ extension BLEMessenger: CBPeripheralDelegate {
         for c in s.characteristics ?? [] where c.uuid == Self.charUUID {
             let id = stable(for: p)
             outChar[id] = c
+            // Use the actual negotiated max write length for this link to
+            // size CHUNK payloads. Overhead per encrypted CHUNK frame is
+            // 9 (envelope) + 1 (inner kind) + 8 (chunk header) + 28 (AES
+            // nonce+tag) = 46 bytes; subtract that to find the safe data
+            // size, then clamp.
+            let mw = p.maximumWriteValueLength(for: .withResponse)
+            maxChunk[id] = max(60, min(240, mw - 46))
             p.setNotifyValue(true, for: c)
             pump(id)
             maybeSendAvatar(to: id)
@@ -1187,8 +1200,9 @@ extension BLEMessenger: CBPeripheralDelegate {
         case .image, .audio:
             guard let blob = m.data, !blob.isEmpty else { return }
             let type = m.kind == .image ? Frame.typeImage : Frame.typeAudio
+            let cs = maxChunk[m.peerID] ?? Frame.chunkBytes
             enqueue(Frame.frames(for: blob, type: type,
-                                 msgID: m.wireID, nick: nick),
+                                 msgID: m.wireID, nick: nick, chunk: cs),
                     to: m.peerID)
         }
     }

@@ -189,14 +189,19 @@ enum Frame {
     static func profile(nick: String) -> Data { wrap(PROFILE, Data(nick.utf8)) }
 
     /// Split a media blob into HEAD + CHUNK* + END frames.
+    /// `chunkBytes` defaults to the conservative cap; callers should pass
+    /// the per-link maximum derived from `CBPeripheral.maximumWriteValueLength`
+    /// (minus our envelope+chunk-header+AES-GCM overhead).
     static func frames(for blob: Data, type: UInt8,
-                       msgID: UInt32, nick: String) -> [Data] {
+                       msgID: UInt32, nick: String,
+                       chunk chunkSize: Int = chunkBytes) -> [Data] {
         let xfer = newID()
+        let cs = max(60, min(240, chunkSize))
         var out = [head(xfer: xfer, total: blob.count, type: type,
                         msgID: msgID, nick: nick)]
         var off = 0
         while off < blob.count {
-            let e = min(off + chunkBytes, blob.count)
+            let e = min(off + cs, blob.count)
             out.append(chunk(xfer: xfer, offset: off,
                              bytes: blob.subdata(in: off..<e)))
             off = e
