@@ -9,3 +9,4 @@ DerivedData/
 *.mobileprovision
 
 web/.vercel/
+.gitmsg.tmp
