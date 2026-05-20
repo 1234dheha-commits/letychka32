@@ -41,6 +41,24 @@ final class Supa {
         }
     }
 
+    /// Hand the Apple identity token from a native Sign in with Apple to
+    /// Supabase, which validates it and gives back a regular Supabase
+    /// session tied to the Apple user. Phase E.
+    @MainActor
+    func signInWithApple(idToken: String) async {
+        do {
+            _ = try await client.auth.signInWithIdToken(
+                credentials: OpenIDConnectCredentials(
+                    provider: .apple,
+                    idToken: idToken
+                )
+            )
+            await ensureProfile()
+        } catch {
+            print("Supa: Apple sign-in failed: \(error)")
+        }
+    }
+
     @MainActor
     private func ensureProfile() async {
         guard let uid = client.auth.currentUser?.id else { return }

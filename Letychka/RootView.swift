@@ -407,6 +407,14 @@ struct RootView: View {
                         if let fn = cred.fullName?.givenName, !fn.isEmpty {
                             appleUserName = fn
                         }
+                        // Phase E: also sign into Supabase using the Apple
+                        // identity token, so the account is tied to Apple
+                        // and survives reinstall on the same Apple ID.
+                        if let tokenData = cred.identityToken,
+                           let token = String(data: tokenData,
+                                              encoding: .utf8) {
+                            Task { await Supa.shared.signInWithApple(idToken: token) }
+                        }
                     }
                     signInError = nil
                 case .failure(let err):
