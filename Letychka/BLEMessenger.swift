@@ -1030,6 +1030,36 @@ extension BLEMessenger: CBPeripheralDelegate {
         }
     }
 
+    /// Manual "Send again" from a long-press on a stuck message. Re-queues
+    /// the frame; the receiver de-dups by wireID so no duplicates appear.
+    func resend(_ m: ChatMessage) {
+        guard m.mine, m.wireID != 0 else { return }
+        switch m.kind {
+        case .text:
+            enqueue([Frame.text(nick: nick, text: m.text,
+                                msgID: m.wireID,
+                                replyTo: m.replyTo ?? 0)], to: m.peerID)
+        case .image, .audio:
+            guard let blob = m.data, !blob.isEmpty else { return }
+            let type = m.kind == .image ? Frame.typeImage : Frame.typeAudio
+            enqueue(Frame.frames(for: blob, type: type,
+                                 msgID: m.wireID, nick: nick),
+                    to: m.peerID)
+        }
+        // Refresh the date so the UI flips from "failed" back to "sending"
+        // immediately, then to "delivered" when the new ACK lands.
+        onMain {
+            if let i = self.messages.firstIndex(where: { $0.id == m.id }) {
+                self.messages[i] = ChatMessage(peerID: m.peerID, mine: true,
+                                               text: m.text, date: Date(),
+                                               kind: m.kind, data: m.data,
+                                               wireID: m.wireID,
+                                               replyTo: m.replyTo)
+                self.persist()
+            }
+        }
+    }
+
     /// On reconnect, replay any of our text messages to this peer that
     /// never got an ACK. The receiver de-dups by wireID, so this is safe.
     /// Limited to the last 24 hours and 20 messages, text only.

@@ -96,5 +96,6 @@
 "Slide up to lock, left to cancel" = "Вверх чтобы закрепить, влево чтобы отменить";
 "Mention" = "Упомянуть";
 "%@ is nearby" = "%@ рядом";
+"Send again" = "Отправить заново";
 "Notify about people nearby" = "Уведомлять о людях рядом";
 "A small notification when someone new appears in Bluetooth range. Off by default." = "Маленькое уведомление, когда кто-то новый появляется в зоне Bluetooth. По умолчанию выключено.";

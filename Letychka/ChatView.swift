@@ -353,6 +353,13 @@ struct ChatView: View {
         Button { replyingTo = m; editing = nil } label: {
             Label(L("Reply"), systemImage: "arrowshape.turn.up.left")
         }
+        if m.mine, m.wireID != 0, m.delivered != true,
+           (ble.seenUpTo[peer.id] ?? 0) < m.wireID {
+            Button { ble.resend(m) } label: {
+                Label(L("Send again"),
+                      systemImage: "arrow.clockwise")
+            }
+        }
         if m.mine && m.kind == .text {
             Button {
                 editing = m
