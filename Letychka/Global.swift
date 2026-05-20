@@ -177,19 +177,24 @@ final class Global: ObservableObject {
         } catch {
             print("Global.openDirectChat lookup failed: \(error)")
         }
-        // 2. Create one.
+        // 2. Create one. We generate the chat UUID on the client so we do
+        //    not need `.insert().select()` to get it back. The SELECT
+        //    policy on `chats` requires the caller to already be a member,
+        //    which is false in the split-second BETWEEN inserting the chat
+        //    and inserting our own chat_members row — so the returning
+        //    select would come back empty and we would think it failed.
         do {
+            let newID = UUID()
             struct NewChat: Encodable {
+                let id: UUID
                 let kind: String
                 let created_by: UUID
             }
-            let created: [Chat] = try await Supa.shared.client
+            try await Supa.shared.client
                 .from("chats")
-                .insert(NewChat(kind: "direct", created_by: myID))
-                .select("id,kind,name,created_at")
+                .insert(NewChat(id: newID, kind: "direct",
+                                created_by: myID))
                 .execute()
-                .value
-            guard let chat = created.first else { return nil }
             struct NewMember: Encodable {
                 let chat_id: UUID
                 let user_id: UUID
@@ -197,16 +202,16 @@ final class Global: ObservableObject {
             }
             try await Supa.shared.client
                 .from("chat_members")
-                .insert(NewMember(chat_id: chat.id,
+                .insert(NewMember(chat_id: newID,
                                   user_id: myID, role: "owner"))
                 .execute()
             try await Supa.shared.client
                 .from("chat_members")
-                .insert(NewMember(chat_id: chat.id,
+                .insert(NewMember(chat_id: newID,
                                   user_id: other.id, role: "member"))
                 .execute()
             await refresh()
-            return chat.id
+            return newID
         } catch {
             print("Global.openDirectChat insert failed: \(error)")
             return nil
@@ -214,24 +219,26 @@ final class Global: ObservableObject {
     }
 
     /// Create a group chat with `name` and `members` (besides me). Returns
-    /// the new chat id, or nil on failure. I become the owner.
+    /// the new chat id, or nil on failure. I become the owner. Same trick
+    /// as `openDirectChat`: client-generated UUID so we don't need to read
+    /// the row back through a SELECT policy that we don't yet satisfy.
     func createGroup(name: String, members: [Profile]) async -> UUID? {
         guard let myID = me?.id else { return nil }
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
         do {
+            let newID = UUID()
             struct NewChat: Encodable {
+                let id: UUID
                 let kind: String
                 let name: String
                 let created_by: UUID
             }
-            let created: [Chat] = try await Supa.shared.client
+            try await Supa.shared.client
                 .from("chats")
-                .insert(NewChat(kind: "group", name: trimmed, created_by: myID))
-                .select("id,kind,name,created_at")
+                .insert(NewChat(id: newID, kind: "group",
+                                name: trimmed, created_by: myID))
                 .execute()
-                .value
-            guard let chat = created.first else { return nil }
             struct NewMember: Encodable {
                 let chat_id: UUID
                 let user_id: UUID
@@ -239,18 +246,18 @@ final class Global: ObservableObject {
             }
             try await Supa.shared.client
                 .from("chat_members")
-                .insert(NewMember(chat_id: chat.id,
+                .insert(NewMember(chat_id: newID,
                                   user_id: myID, role: "owner"))
                 .execute()
             for m in members where m.id != myID {
                 try? await Supa.shared.client
                     .from("chat_members")
-                    .insert(NewMember(chat_id: chat.id,
+                    .insert(NewMember(chat_id: newID,
                                       user_id: m.id, role: "member"))
                     .execute()
             }
             await refresh()
-            return chat.id
+            return newID
         } catch {
             print("Global.createGroup failed: \(error)")
             return nil
