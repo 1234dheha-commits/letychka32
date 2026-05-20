@@ -9,6 +9,9 @@ packages:
   Supabase:
     url: https://github.com/supabase/supabase-swift
     from: "2.0.0"
+  LibSignal:
+    url: https://github.com/signalapp/libsignal
+    from: "0.50.0"
 settings:
   base:
     MARKETING_VERSION: "1.0"
@@ -25,6 +28,8 @@ targets:
     dependencies:
       - package: Supabase
         product: Supabase
+      - package: LibSignal
+        product: LibSignalClient
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: recode.letychka32
