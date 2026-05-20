@@ -30,6 +30,9 @@ struct RootView: View {
     @State private var globalNickField: String = ""
     @State private var globalNickError: String?
     @State private var globalNickSaving = false
+    /// nil = not yet checked / unchanged, true = free, false = taken
+    @State private var globalNickAvailable: Bool?
+    @State private var globalNickChecking = false
 
     var body: some View {
         Group {
@@ -363,8 +366,13 @@ struct RootView: View {
                                 .autocorrectionDisabled()
                                 .submitLabel(.done)
                                 .onSubmit { saveGlobalNick() }
+                                .onChange(of: globalNickField) { _, _ in
+                                    Task { await checkNickAvailability() }
+                                }
+                            availabilityBadge
                             if globalNickField != (global.me?.username ?? "")
-                                && !globalNickField.isEmpty {
+                                && !globalNickField.isEmpty
+                                && globalNickAvailable != false {
                                 if globalNickSaving {
                                     ProgressView()
                                 } else {
@@ -539,6 +547,48 @@ struct RootView: View {
     }
 
     // MARK: Helpers
+
+    /// Tiny "✓ free" / "✗ taken" indicator next to the username editor.
+    /// Hidden while the field equals the current saved value (nothing to
+    /// check) or while a request is in flight.
+    @ViewBuilder
+    private var availabilityBadge: some View {
+        if globalNickField == (global.me?.username ?? "")
+            || globalNickField.isEmpty {
+            EmptyView()
+        } else if globalNickChecking {
+            ProgressView().scaleEffect(0.6)
+        } else if globalNickAvailable == true {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+        } else if globalNickAvailable == false {
+            Image(systemName: "xmark.circle.fill")
+                .foregroundStyle(.red)
+        }
+    }
+
+    /// Debounced check against the server: while the field equals the
+    /// current saved value, do nothing. Otherwise wait ~400ms, then ask
+    /// "is this name free?" The result is only kept if the field still
+    /// holds the same candidate (otherwise the user kept typing).
+    private func checkNickAvailability() async {
+        globalNickError = nil
+        let candidate = globalNickField
+        if candidate == (global.me?.username ?? "") || candidate.isEmpty {
+            globalNickAvailable = nil
+            globalNickChecking = false
+            return
+        }
+        globalNickChecking = true
+        try? await Task.sleep(nanoseconds: 400_000_000)
+        guard candidate == globalNickField else { return }
+        let free = await Global.shared.isUsernameAvailable(candidate)
+        await MainActor.run {
+            guard candidate == globalNickField else { return }
+            globalNickAvailable = free
+            globalNickChecking = false
+        }
+    }
 
     /// Submit a username change to the server. The local @State is updated
     /// optimistically on success and the error label is cleared. On error

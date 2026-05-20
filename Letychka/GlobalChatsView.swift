@@ -93,8 +93,21 @@ struct GlobalChatsView: View {
                 }
             }
         }
-        .task { await g.refresh() }
+        .task { await pollChats() }
         .refreshable { await g.refresh() }
+    }
+
+    /// Re-fetch the chat list every 5 seconds while the Global tab is on
+    /// screen, so a chat someone else just opened with us, or a message
+    /// they just sent, surfaces without us having to relaunch the app.
+    /// Cancelled automatically when .task's view goes away.
+    private func pollChats() async {
+        await g.refresh()
+        while !Task.isCancelled {
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            if Task.isCancelled { break }
+            await g.refresh()
+        }
     }
 
     /// Fires after a sheet has finished its dismiss animation; only then is

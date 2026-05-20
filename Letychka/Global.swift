@@ -118,6 +118,30 @@ final class Global: ObservableObject {
         }
     }
 
+    /// Live check: is `name` already taken? Returns true if the username
+    /// is free OR equals the caller's own current name (so the field is
+    /// not flagged as "taken" by yourself). Used by the editor to show a
+    /// green check / red cross while typing.
+    func isUsernameAvailable(_ name: String) async -> Bool {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        if trimmed == me?.username { return true }
+        struct Row: Decodable { let id: UUID }
+        do {
+            let rows: [Row] = try await Supa.shared.client
+                .from("profiles")
+                .select("id")
+                .eq("username", value: trimmed)
+                .limit(1)
+                .execute()
+                .value
+            return rows.isEmpty
+        } catch {
+            print("Global.isUsernameAvailable failed: \(error)")
+            return false
+        }
+    }
+
     /// Find profiles whose username starts with `prefix` (case-insensitive).
     /// Hides ourselves from the result so we cannot start a chat with self.
     func searchUsers(prefix: String) async -> [Profile] {
