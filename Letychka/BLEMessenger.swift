@@ -1032,6 +1032,8 @@ extension BLEMessenger: CBPeripheralDelegate {
 
     /// Manual "Send again" from a long-press on a stuck message. Re-queues
     /// the frame; the receiver de-dups by wireID so no duplicates appear.
+    /// The status tick flips back to "delivered" automatically once the
+    /// fresh ACK arrives.
     func resend(_ m: ChatMessage) {
         guard m.mine, m.wireID != 0 else { return }
         switch m.kind {
@@ -1045,18 +1047,6 @@ extension BLEMessenger: CBPeripheralDelegate {
             enqueue(Frame.frames(for: blob, type: type,
                                  msgID: m.wireID, nick: nick),
                     to: m.peerID)
-        }
-        // Refresh the date so the UI flips from "failed" back to "sending"
-        // immediately, then to "delivered" when the new ACK lands.
-        onMain {
-            if let i = self.messages.firstIndex(where: { $0.id == m.id }) {
-                self.messages[i] = ChatMessage(peerID: m.peerID, mine: true,
-                                               text: m.text, date: Date(),
-                                               kind: m.kind, data: m.data,
-                                               wireID: m.wireID,
-                                               replyTo: m.replyTo)
-                self.persist()
-            }
         }
     }
 
