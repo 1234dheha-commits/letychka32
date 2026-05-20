@@ -174,7 +174,9 @@ final class BLEMessenger: NSObject, ObservableObject {
             self.saveScheduled = false
             guard let u = self.storeURL,
                   let d = try? JSONEncoder().encode(self.messages) else { return }
-            try? d.write(to: u, options: .atomic)
+            // .completeFileProtection: encrypted at rest by iOS while the
+            // device is locked. Lost phone can't be read without passcode.
+            try? d.write(to: u, options: [.atomic, .completeFileProtection])
         }
     }
     private func loadStore() {
@@ -211,7 +213,9 @@ final class BLEMessenger: NSObject, ObservableObject {
             self.avatarSaveScheduled = false
             guard let u = self.avatarsURL,
                   let d = try? JSONEncoder().encode(self.avatars) else { return }
-            try? d.write(to: u, options: .atomic)
+            // .completeFileProtection: encrypted at rest by iOS while the
+            // device is locked. Lost phone can't be read without passcode.
+            try? d.write(to: u, options: [.atomic, .completeFileProtection])
         }
     }
 
@@ -249,7 +253,9 @@ final class BLEMessenger: NSObject, ObservableObject {
             self.roomSaveScheduled = false
             guard let u = self.roomURL,
                   let d = try? JSONEncoder().encode(self.roomMessages) else { return }
-            try? d.write(to: u, options: .atomic)
+            // .completeFileProtection: encrypted at rest by iOS while the
+            // device is locked. Lost phone can't be read without passcode.
+            try? d.write(to: u, options: [.atomic, .completeFileProtection])
         }
     }
 

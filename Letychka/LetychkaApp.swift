@@ -72,7 +72,9 @@ enum AvatarStore {
         let r = UIGraphicsImageRenderer(size: sz)
         let img = r.image { _ in image.draw(in: CGRect(origin: .zero, size: sz)) }
         if let data = img.jpegData(compressionQuality: 0.8) {
-            try? data.write(to: url)
+            // Encrypted at rest while device locked.
+            try? data.write(to: url,
+                            options: [.atomic, .completeFileProtection])
         }
     }
     static func load() -> UIImage? {
