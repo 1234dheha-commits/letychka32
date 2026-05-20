@@ -18,13 +18,12 @@ struct ChatView: View {
     @State private var replyingTo: ChatMessage?
     @State private var lastTyped = Date.distantPast
     @State private var lastActivity = Date.distantPast
+    @State private var photoView: PhotoItem?
     @State private var willCancel = false
     @State private var wave: [CGFloat] = Array(repeating: 0.06, count: 26)
     private let emojis = ["👍", "❤️", "😂", "🔥", "😮", "😢"]
 
     private var msgs: [ChatMessage] { ble.messages(with: peer.id) }
-    private var receiving: Int? { ble.incoming[peer.id] }
-
     var body: some View {
         VStack(spacing: 0) {
             ScrollViewReader { proxy in
@@ -49,13 +48,6 @@ struct ChatView: View {
                 }
             }
 
-            if let pct = receiving {
-                Text(L("Receiving media %d%%", pct))
-                    .font(.system(size: 12))
-                    .foregroundStyle(Theme.muted(scheme))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 18).padding(.top, 6)
-            }
             if let notice {
                 Text(notice)
                     .font(.system(size: 12))
@@ -113,9 +105,25 @@ struct ChatView: View {
             inputBar
         }
         .background(Theme.bg(scheme).ignoresSafeArea())
-        .navigationTitle(peer.nick)
         .navigationBarTitleDisplayMode(.inline)
+        .fullScreenCover(item: $photoView) { it in
+            PhotoViewer(image: it.image) { photoView = nil }
+        }
         .toolbar {
+            ToolbarItem(placement: .principal) {
+                VStack(spacing: 2) {
+                    Text(peer.nick)
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(Theme.text(scheme))
+                    if let pct = ble.outgoing[peer.id] {
+                        progressLine(L("Sending media %d%%", pct),
+                                     pct: pct)
+                    } else if let pct = ble.incoming[peer.id] {
+                        progressLine(L("Receiving media %d%%", pct),
+                                     pct: pct)
+                    }
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Button {
@@ -198,6 +206,26 @@ struct ChatView: View {
     }
 
     // MARK: Row (reply preview + bubble + reaction + seen)
+
+    /// Telegram-style small text + thin progress bar under the nick.
+    @ViewBuilder
+    private func progressLine(_ label: String, pct: Int) -> some View {
+        VStack(spacing: 2) {
+            Text(label)
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.muted(scheme))
+            GeometryReader { g in
+                let w = g.size.width
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Theme.line(scheme)).frame(height: 2)
+                    Capsule().fill(Theme.accent)
+                        .frame(width: w * CGFloat(min(max(pct, 0), 100)) / 100,
+                               height: 2)
+                }
+            }
+            .frame(width: 140, height: 2)
+        }
+    }
 
     private func snippet(_ m: ChatMessage) -> String {
         switch m.kind {
@@ -330,6 +358,7 @@ struct ChatView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: 15)
                         .stroke(Theme.line(scheme), lineWidth: 0.5))
+                    .onTapGesture { photoView = PhotoItem(image: ui) }
             } else {
                 brokenBubble(L("Photo"))
             }
@@ -780,6 +809,93 @@ final class AudioPlayer: NSObject, ObservableObject, AVAudioPlayerDelegate {
 
     func audioPlayerDidFinishPlaying(_ p: AVAudioPlayer, successfully f: Bool) {
         DispatchQueue.main.async { self.stop() }
+    }
+}
+
+/// Wrapper so a UIImage can be presented in `.fullScreenCover(item:)`.
+struct PhotoItem: Identifiable {
+    let id = UUID()
+    let image: UIImage
+}
+
+/// Fullscreen photo viewer with pinch zoom, drag-to-pan and a share
+/// sheet (which includes Save Image).
+struct PhotoViewer: View {
+    let image: UIImage
+    var onClose: () -> Void
+    @State private var scale: CGFloat = 1
+    @State private var lastScale: CGFloat = 1
+    @State private var offset: CGSize = .zero
+    @State private var lastOffset: CGSize = .zero
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            Image(uiImage: image)
+                .resizable().scaledToFit()
+                .scaleEffect(scale)
+                .offset(offset)
+                .gesture(
+                    MagnificationGesture()
+                        .onChanged { v in
+                            scale = max(1, min(4, lastScale * v))
+                        }
+                        .onEnded { _ in
+                            lastScale = scale
+                            if scale <= 1 {
+                                withAnimation(.easeOut(duration: 0.2)) {
+                                    offset = .zero; lastOffset = .zero
+                                }
+                            }
+                        }
+                )
+                .simultaneousGesture(
+                    DragGesture()
+                        .onChanged { v in
+                            guard scale > 1 else { return }
+                            offset = CGSize(
+                                width: lastOffset.width + v.translation.width,
+                                height: lastOffset.height + v.translation.height)
+                        }
+                        .onEnded { _ in lastOffset = offset }
+                )
+                .onTapGesture(count: 2) {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        if scale > 1 {
+                            scale = 1; lastScale = 1
+                            offset = .zero; lastOffset = .zero
+                        } else {
+                            scale = 2; lastScale = 2
+                        }
+                    }
+                }
+            VStack {
+                HStack {
+                    Button(action: onClose) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 17, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 40, height: 40)
+                            .background(.black.opacity(0.5), in: Circle())
+                    }
+                    Spacer()
+                    ShareLink(
+                        item: Image(uiImage: image),
+                        preview: SharePreview("Photo",
+                                              image: Image(uiImage: image))
+                    ) {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 17, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 40, height: 40)
+                            .background(.black.opacity(0.5), in: Circle())
+                    }
+                }
+                .padding(.horizontal, 16).padding(.top, 6)
+                Spacer()
+            }
+        }
+        .preferredColorScheme(.dark)
     }
 }
 

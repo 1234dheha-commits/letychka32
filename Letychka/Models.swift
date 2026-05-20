@@ -123,7 +123,7 @@ enum Frame {
     /// Header is 1 (kind) + 8 (senderID). Keep a chunk small enough that a
     /// whole frame still fits a modern iPhone BLE ATT payload (>= ~185).
     static let header = 9
-    static let chunkBytes = 150
+    static let chunkBytes = 180
 
     static func u32(_ v: UInt32) -> Data {
         Data([UInt8(v >> 24 & 0xFF), UInt8(v >> 16 & 0xFF),

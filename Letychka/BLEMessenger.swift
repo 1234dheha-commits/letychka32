@@ -34,6 +34,10 @@ final class BLEMessenger: NSObject, ObservableObject {
     @Published var names: [String: String] = [:]
     /// peerID -> percent of an incoming media transfer (nil when idle).
     @Published var incoming: [String: Int] = [:]
+    /// peerID -> percent of an OUTGOING media transfer (nil when idle).
+    @Published var outgoing: [String: Int] = [:]
+    private var outgoingTotal: [String: Int] = [:]
+    private var outgoingDone: [String: Int] = [:]
     /// peerID -> count of unseen incoming messages.
     @Published var unread: [String: Int] = [:]
     /// peerID -> time we last heard activity from them (pruned after 5s).
@@ -569,10 +573,27 @@ final class BLEMessenger: NSObject, ObservableObject {
         guard !blob.isEmpty else { return }
         let type = image ? Frame.typeImage : Frame.typeAudio
         let mid = Frame.newID()
-        enqueue(Frame.frames(for: blob, type: type, msgID: mid, nick: nick),
-                to: peerID)
+        let fs = Frame.frames(for: blob, type: type, msgID: mid, nick: nick)
+        outgoingTotal[peerID, default: 0] += fs.count
+        outgoing[peerID] = (outgoing[peerID] ?? 0)
+        enqueue(fs, to: peerID)
         append(ChatMessage(peerID: peerID, mine: true, text: "", date: Date(),
                            kind: image ? .image : .audio, data: blob, wireID: mid))
+    }
+
+    /// Called after the OS has accepted/sent a single frame to `peerID`.
+    /// Advances the outgoing-media percent for the chat header.
+    private func bumpOutgoing(_ peerID: String) {
+        guard let total = outgoingTotal[peerID], total > 0 else { return }
+        let done = (outgoingDone[peerID] ?? 0) + 1
+        outgoingDone[peerID] = done
+        let pct = min(100, done * 100 / total)
+        outgoing[peerID] = pct
+        if done >= total {
+            outgoing[peerID] = nil
+            outgoingTotal[peerID] = nil
+            outgoingDone[peerID] = nil
+        }
     }
 
     /// Run a UI-triggered model change now (not deferred a runloop, which
@@ -637,6 +658,7 @@ final class BLEMessenger: NSObject, ObservableObject {
             while !q.isEmpty {
                 if peripheral.updateValue(q[0], for: c, onSubscribedCentrals: nil) {
                     q.removeFirst()
+                    bumpOutgoing(peerID)
                 } else {
                     break   // resumes in peripheralManagerIsReady
                 }
@@ -653,7 +675,11 @@ final class BLEMessenger: NSObject, ObservableObject {
     }
 
     private func append(_ m: ChatMessage) {
-        DispatchQueue.main.async {
+        // onMain runs synchronously when we are already on the main queue
+        // (the CoreBluetooth delegate queue IS main here), so a fresh
+        // notification fires in the same runloop tick instead of after a
+        // DispatchQueue hop. Cuts perceived notification latency.
+        onMain {
             self.messages.append(m)
             self.persist()
             guard !m.mine else { return }
@@ -943,6 +969,11 @@ extension BLEMessenger: CBCentralManagerDelegate {
 
     func centralManager(_ m: CBCentralManager, didDiscover p: CBPeripheral,
                         advertisementData: [String: Any], rssi RSSI: NSNumber) {
+        // Drop garbage RSSI: 127 is Apple's "no signal" sentinel, anything
+        // positive is invalid, anything below -100 dBm is so weak it is
+        // probably a stray bounce (kills more fake nearby blips).
+        let r = RSSI.intValue
+        guard r < 0, r >= -100 else { return }
         let cbid = p.identifier.uuidString
         let name = (advertisementData[CBAdvertisementDataLocalNameKey] as? String)
                    ?? p.name ?? ""
@@ -1085,6 +1116,7 @@ extension BLEMessenger: CBPeripheralDelegate {
             if var q = sendQueues[id], !q.isEmpty {
                 q.removeFirst(); sendQueues[id] = q
             }
+            bumpOutgoing(id)
             pump(id)
         } else {
             // Not delivered. Keep the frame and retry shortly (or it flushes

@@ -97,5 +97,6 @@
 "Mention" = "Згадати";
 "%@ is nearby" = "%@ поруч";
 "Send again" = "Надіслати знову";
+"Sending media %d%%" = "Надсилання медіа %d%%";
 "Notify about people nearby" = "Сповіщати про людей поруч";
 "A small notification when someone new appears in Bluetooth range. Off by default." = "Невелике сповіщення, коли хтось новий з'являється в зоні Bluetooth. За замовчуванням вимкнено.";
