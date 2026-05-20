@@ -133,6 +133,8 @@
 "Share code" = "Код для друзей";
 "Friends scan this with the Camera app to copy your username and find you." = "Друг наводит Камеру на этот код, чтобы скопировать ваше имя и найти вас.";
 "Copy username" = "Скопировать имя";
+"Search" = "Поиск";
+"Scan QR" = "Сканировать QR";
 "Your global username" = "Ваше глобальное имя";
 "No global chats yet" = "Глобальных чатов пока нет";
 "No messages yet" = "Сообщений пока нет";

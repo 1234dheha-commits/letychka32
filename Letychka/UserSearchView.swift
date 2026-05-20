@@ -5,11 +5,13 @@ import SwiftUI
 struct UserSearchView: View {
     @Environment(\.colorScheme) private var scheme
     @Environment(\.dismiss) private var dismiss
+    var showCancel: Bool = true
     var onPick: (Global.Profile) -> Void
 
     @State private var query: String = ""
     @State private var results: [Global.Profile] = []
     @State private var searching = false
+    @State private var showScanner = false
 
     var body: some View {
         ZStack {
@@ -29,8 +31,34 @@ struct UserSearchView: View {
         .navigationTitle(L("Find people"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Button(L("Cancel")) { dismiss() }
+            if showCancel {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button(L("Cancel")) { dismiss() }
+                }
+            }
+            if QRScanner.isSupported {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showScanner = true } label: {
+                        Image(systemName: "qrcode.viewfinder")
+                    }
+                }
+            }
+        }
+        .sheet(isPresented: $showScanner) {
+            NavigationStack {
+                QRScannerView { text in
+                    showScanner = false
+                    query = text
+                    Task { await run(text) }
+                }
+                .ignoresSafeArea()
+                .navigationTitle(L("Scan QR"))
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button(L("Cancel")) { showScanner = false }
+                    }
+                }
             }
         }
     }

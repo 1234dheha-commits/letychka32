@@ -33,6 +33,11 @@ struct RootView: View {
     /// nil = not yet checked / unchanged, true = free, false = taken
     @State private var globalNickAvailable: Bool?
     @State private var globalNickChecking = false
+    /// Chats tab: open a Global chat by id (push GlobalChatView).
+    @State private var globalChatID: UUID?
+    /// Search tab: same pattern, separated so the two tabs do not fight.
+    @State private var searchPendingChatID: UUID?
+    @State private var searchShowCreateGroup = false
 
     var body: some View {
         Group {
@@ -87,11 +92,13 @@ struct RootView: View {
             chatsTab
                 .tabItem { tabLabel(L("Chats"),
                                     icon: "bubble.left.and.bubble.right.fill") }
-                .badge(ble.unreadTotal + ble.roomUnread)
+                .badge(ble.unreadTotal + ble.roomUnread
+                       + global.chats.reduce(0) { $0 + $1.unread })
                 .tag(1)
             if netMode != "ble" {
-                globalTab
-                    .tabItem { tabLabel(L("Global"), icon: "globe") }
+                searchTab
+                    .tabItem { tabLabel(L("Search"),
+                                        icon: "magnifyingglass") }
                     .tag(4)
             }
             settingsTab
@@ -146,7 +153,30 @@ struct RootView: View {
                 Theme.bg(scheme).ignoresSafeArea()
                 VStack(spacing: 0) {
                     roomRow
-                    ChatsListView(ble: ble) { chatsPeer = $0 }
+                    if ble.conversations().isEmpty
+                        && (netMode == "ble" || global.chats.isEmpty) {
+                        chatsEmptyState
+                    } else {
+                        ScrollView {
+                            LazyVStack(spacing: 0) {
+                                ChatsListView(ble: ble) { chatsPeer = $0 }
+                                if netMode != "ble"
+                                    && !global.chats.isEmpty {
+                                    Divider().overlay(Theme.line(scheme))
+                                    ForEach(global.chats) { row in
+                                        globalRow(row)
+                                            .contentShape(Rectangle())
+                                            .onTapGesture {
+                                                globalChatID = row.chat.id
+                                            }
+                                        Divider()
+                                            .overlay(Theme.line(scheme))
+                                            .padding(.leading, 74)
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
             .navigationTitle(L("Chats"))
@@ -154,14 +184,154 @@ struct RootView: View {
             .navigationDestination(item: $chatsPeer) { p in
                 ChatView(ble: ble, peer: p)
             }
+            .navigationDestination(item: $globalChatID) { cid in
+                if let row = global.chats.first(where: { $0.chat.id == cid }) {
+                    GlobalChatView(row: row)
+                }
+            }
             .navigationDestination(isPresented: $showRoom) {
                 RoomView(ble: ble)
+            }
+            .task {
+                if netMode != "ble" { await pollGlobalChats() }
             }
         }
     }
 
-    private var globalTab: some View {
-        NavigationStack { GlobalChatsView() }
+    /// Centred "No chats yet" block; sits in the chats tab when both BLE
+    /// and (optionally) Global lists are empty.
+    private var chatsEmptyState: some View {
+        VStack(spacing: 10) {
+            Spacer().frame(height: 80)
+            Spacer()
+            Image(systemName: "bubble.left.and.bubble.right")
+                .font(.system(size: 46, weight: .light))
+                .foregroundStyle(Theme.accent)
+            Text(L("No chats yet"))
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(Theme.text(scheme))
+            if !hideHints {
+                Text(L("Find people on the radar and say hi. Chats are saved on this phone so they are still here next time."))
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.muted(scheme))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 44)
+            }
+            Spacer()
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    @ViewBuilder
+    private func globalRow(_ row: Global.ChatRow) -> some View {
+        let myID = global.me?.id ?? UUID()
+        let other = row.otherParty(me: myID)
+        let title = other?.display_name?.isEmpty == false
+            ? (other?.display_name ?? "")
+            : (other?.username ?? row.chat.name ?? L("Group chat"))
+        let preview = row.lastMessage?.body ?? L("No messages yet")
+        let date = row.lastMessage?.created_at ?? row.chat.created_at
+        HStack(spacing: 12) {
+            ZStack(alignment: .bottomTrailing) {
+                Circle().fill(Theme.accent.opacity(0.18))
+                    .frame(width: 46, height: 46)
+                    .overlay(
+                        Text(String(title.prefix(1)).uppercased())
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundStyle(Theme.accent)
+                    )
+                Image(systemName: "globe")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 16, height: 16)
+                    .background(Theme.accent, in: Circle())
+                    .overlay(Circle().stroke(Theme.bg(scheme), lineWidth: 1.5))
+                    .offset(x: 2, y: 2)
+            }
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(title)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Theme.text(scheme))
+                        .lineLimit(1)
+                    Spacer(minLength: 6)
+                    Text(Self.chatTimeFmt.string(from: date))
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.muted(scheme))
+                }
+                Text(preview)
+                    .font(.system(size: 14))
+                    .foregroundStyle(Theme.muted(scheme))
+                    .lineLimit(1)
+            }
+            if row.unread > 0 {
+                Text("\(row.unread)")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(minWidth: 20, minHeight: 20)
+                    .padding(.horizontal, 5)
+                    .background(Theme.accent, in: Capsule())
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 11)
+    }
+
+    private static let chatTimeFmt: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm"
+        return f
+    }()
+
+    /// 5-second polling loop for Global chats while the Chats tab is open.
+    private func pollGlobalChats() async {
+        await global.refresh()
+        while !Task.isCancelled {
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            if Task.isCancelled { break }
+            await global.refresh()
+        }
+    }
+
+    /// The "Search" tab (renamed from Global). Full-screen UserSearchView
+    /// for finding people by @username or QR. A "+" toolbar menu adds a
+    /// shortcut for starting a group chat.
+    private var searchTab: some View {
+        NavigationStack {
+            UserSearchView(showCancel: false) { user in
+                Task {
+                    if let id = await global.openDirectChat(with: user) {
+                        searchPendingChatID = id
+                    }
+                }
+            }
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { searchShowCreateGroup = true } label: {
+                        Image(systemName: "person.3.fill")
+                    }
+                }
+            }
+            .navigationDestination(item: $searchPendingChatID) { cid in
+                if let row = global.chats.first(where: { $0.chat.id == cid }) {
+                    GlobalChatView(row: row)
+                }
+            }
+            .sheet(isPresented: $searchShowCreateGroup,
+                   onDismiss: openSearchPendingChat) {
+                NavigationStack {
+                    CreateGroupView { newID in
+                        searchPendingChatID = newID
+                        searchShowCreateGroup = false
+                    }
+                }
+            }
+        }
+    }
+
+    private func openSearchPendingChat() {
+        // sheet dismissed; navigation already triggered by pendingChatID set
     }
 
     private var roomRow: some View {

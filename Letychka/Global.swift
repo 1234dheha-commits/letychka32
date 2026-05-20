@@ -32,7 +32,8 @@ final class Global: ObservableObject {
     /// with the other party (for direct chats) and the latest message.
     struct ChatRow: Identifiable, Hashable {
         let chat: Chat
-        var members: [Profile]      // everyone, including me
+        var members: [Profile]              // everyone, including me
+        var memberLastRead: [UUID: Date]    // user_id -> last_read_at
         var lastMessage: Message?
         var unread: Int
         var id: UUID { chat.id }
@@ -41,6 +42,15 @@ final class Global: ObservableObject {
         func otherParty(me: UUID) -> Profile? {
             guard chat.kind == .direct else { return nil }
             return members.first(where: { $0.id != me })
+        }
+
+        /// Latest "I saw a message at or after this timestamp" from any
+        /// member other than `me`. Used to render ✓✓ on my own bubbles.
+        func othersReadCutoff(me: UUID) -> Date? {
+            memberLastRead
+                .filter { $0.key != me }
+                .values
+                .max()
         }
     }
 
@@ -367,6 +377,30 @@ final class Global: ObservableObject {
         pollTask = nil
     }
 
+    /// Mark this chat as read up to "now" for the caller. Cheap: a single
+    /// UPDATE on the caller's own chat_members row.
+    func markChatRead(_ chatID: UUID) async {
+        guard let myID = me?.id else { return }
+        struct Upd: Encodable { let last_read_at: String }
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        do {
+            try await Supa.shared.client
+                .from("chat_members")
+                .update(Upd(last_read_at: iso.string(from: Date())))
+                .eq("chat_id", value: chatID)
+                .eq("user_id", value: myID)
+                .execute()
+            // Reflect locally so the chats list unread badge clears now.
+            if let i = chats.firstIndex(where: { $0.chat.id == chatID }) {
+                chats[i].memberLastRead[myID] = Date()
+                chats[i].unread = 0
+            }
+        } catch {
+            print("Global.markChatRead failed: \(error)")
+        }
+    }
+
     private func loadMessages(_ chatID: UUID, since: Date?) async {
         do {
             var q = Supa.shared.client
@@ -464,10 +498,11 @@ final class Global: ObservableObject {
         struct MemberFull: Decodable {
             let chat_id: UUID
             let user_id: UUID
+            let last_read_at: Date
         }
         let memberships: [MemberFull] = try await Supa.shared.client
             .from("chat_members")
-            .select("chat_id,user_id")
+            .select("chat_id,user_id,last_read_at")
             .in("chat_id", values: chatIDs)
             .execute()
             .value
@@ -495,10 +530,18 @@ final class Global: ObservableObject {
         }
         // 6. assemble ChatRow list, sorted by last activity
         let out: [ChatRow] = chatRows.map { c in
-            let mids = memberships.filter { $0.chat_id == c.id }.map(\.user_id)
-            let ms = mids.compactMap { byID[$0] }
+            let rowsForChat = memberships.filter { $0.chat_id == c.id }
+            let ms = rowsForChat.compactMap { byID[$0.user_id] }
+            let reads = Dictionary(uniqueKeysWithValues:
+                rowsForChat.map { ($0.user_id, $0.last_read_at) })
+            let myRead = reads[myID]
+            let unread = (lastByChat[c.id]?.created_at).map {
+                ($0 > (myRead ?? .distantPast)
+                 && lastByChat[c.id]?.sender_id != myID) ? 1 : 0
+            } ?? 0
             return ChatRow(chat: c, members: ms,
-                           lastMessage: lastByChat[c.id], unread: 0)
+                           memberLastRead: reads,
+                           lastMessage: lastByChat[c.id], unread: unread)
         }
         chats = out.sorted { (a, b) in
             let ad = a.lastMessage?.created_at ?? a.chat.created_at

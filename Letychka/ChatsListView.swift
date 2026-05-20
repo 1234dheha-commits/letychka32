@@ -31,46 +31,18 @@ struct ChatsListView: View {
 
     var body: some View {
         let convos = ble.conversations()
-        Group {
-            if convos.isEmpty {
-                empty
-            } else {
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(convos) { c in
-                            Button { onOpen(peer(for: c)) } label: { row(c) }
-                                .buttonStyle(.plain)
-                            Divider()
-                                .overlay(Theme.line(scheme))
-                                .padding(.leading, 74)
-                        }
-                    }
-                    .padding(.top, 6)
-                }
+        LazyVStack(spacing: 0) {
+            ForEach(convos) { c in
+                row(c)
+                    .contentShape(Rectangle())
+                    .onTapGesture { onOpen(peer(for: c)) }
+                Divider()
+                    .overlay(Theme.line(scheme))
+                    .padding(.leading, 74)
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private var empty: some View {
-        VStack(spacing: 10) {
-            Spacer()
-            Image(systemName: "bubble.left.and.bubble.right")
-                .font(.system(size: 46, weight: .light))
-                .foregroundStyle(Theme.accent)
-            Text(L("No chats yet"))
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(Theme.text(scheme))
-            if !hideHints {
-                Text(L("Find people on the radar and say hi. Chats are saved on this phone so they are still here next time."))
-                    .font(.system(size: 13))
-                    .foregroundStyle(Theme.muted(scheme))
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 44)
-            }
-            Spacer()
-            Spacer()
-        }
+        .padding(.top, convos.isEmpty ? 0 : 6)
+        .frame(maxWidth: .infinity)
     }
 
     private func row(_ c: BLEMessenger.Convo) -> some View {

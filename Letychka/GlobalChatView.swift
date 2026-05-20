@@ -79,7 +79,15 @@ struct GlobalChatView: View {
         .navigationDestination(isPresented: $showInfo) {
             GroupSettingsView(row: row)
         }
-        .task { await g.openChat(row.chat.id) }
+        .task {
+            await g.openChat(row.chat.id)
+            await g.markChatRead(row.chat.id)
+        }
+        .onChange(of: msgs.count) { _, _ in
+            // New messages arrived while we are looking at the chat;
+            // mark them as read so the sender's ✓ flips to ✓✓.
+            Task { await g.markChatRead(row.chat.id) }
+        }
         .onDisappear { Task { await g.closeChat() } }
     }
 
@@ -98,13 +106,27 @@ struct GlobalChatView: View {
                         mine ? Theme.accent : Theme.surface(scheme),
                         in: RoundedRectangle(cornerRadius: 16)
                     )
-                Text(Self.timeFmt.string(from: m.created_at))
-                    .font(.system(size: 10))
-                    .foregroundStyle(Theme.muted(scheme))
-                    .padding(.horizontal, 4)
+                HStack(spacing: 4) {
+                    Text(Self.timeFmt.string(from: m.created_at))
+                        .font(.system(size: 10))
+                        .foregroundStyle(Theme.muted(scheme))
+                    if mine { readIcon(for: m) }
+                }
+                .padding(.horizontal, 4)
             }
             if !mine { Spacer(minLength: 50) }
         }
+    }
+
+    /// One check = on the server (delivered). Two checks = at least one
+    /// other member has opened the chat after this message arrived.
+    @ViewBuilder
+    private func readIcon(for m: Global.Message) -> some View {
+        let cutoff = row.othersReadCutoff(me: g.me?.id ?? UUID())
+        let read = (cutoff ?? .distantPast) >= m.created_at
+        Image(systemName: read ? "checkmark.circle.fill" : "checkmark")
+            .font(.system(size: 10, weight: .bold))
+            .foregroundStyle(read ? Theme.accent : Theme.muted(scheme))
     }
 
     private var composer: some View {
