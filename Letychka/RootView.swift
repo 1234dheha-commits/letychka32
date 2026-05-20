@@ -84,6 +84,13 @@ struct RootView: View {
                 }
                 .badge(ble.unreadTotal + ble.roomUnread)
                 .tag(1)
+            if netMode != "ble" {
+                globalTab
+                    .tabItem {
+                        Label(L("Global"), systemImage: "globe")
+                    }
+                    .tag(4)
+            }
             settingsTab
                 .tabItem {
                     Label(L("Settings"), systemImage: "gearshape.fill")
@@ -140,6 +147,10 @@ struct RootView: View {
                 RoomView(ble: ble)
             }
         }
+    }
+
+    private var globalTab: some View {
+        NavigationStack { GlobalChatsView() }
     }
 
     private var roomRow: some View {
