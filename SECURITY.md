@@ -129,24 +129,50 @@ This is a one-person + AI build. We rely on industry-standard
 libraries (CryptoKit, X25519, AES-GCM) used correctly, not on any
 formal verification.
 
-## Online mode (planned, not implemented)
+## Online mode (Global) — current state and what is missing
 
-When the optional Global mode ships we will:
-- Use Supabase Auth (Sign in with Apple) for identity.
+Global mode is now shipping as an opt-in beta. It is OFF by default;
+turning it on in Settings > Network mode is what hands the app over
+to the server. Bluetooth mode is unaffected and stays exactly as
+described above.
+
+What v1 of Global ships with:
+- Supabase Auth: anonymous session created on first launch, optional
+  Sign in with Apple (the Apple identity token is exchanged for a
+  Supabase session via `signInWithIdToken`).
+- TLS to Supabase (Apple App Transport Security default).
+- Direct chats (1-to-1) and groups (multi-member) backed by
+  Postgres tables with Row-Level Security. RLS rules require the
+  caller to be a member to read or insert messages.
+- Username search by prefix against the `profiles` table.
+
+What v1 of Global does NOT yet do:
+- **End-to-end encryption.** Messages are stored as plain text on
+  Supabase. The Supabase operator and anyone who compromises the
+  database can read message bodies. The Settings hint says so
+  plainly. Bluetooth chats are still E2E encrypted, only Global is
+  server-readable in v1.
+- **APNs push.** No `devices` token registration yet, no Edge
+  Function fan-out. New messages only appear while the app is open
+  and on the chat view.
+- **SPKI pinning.** We rely on the OS trust store; a malicious CA
+  could MITM the Supabase domain.
+- **Forward secrecy / post-compromise security.** Comes with E2EE.
+- **Group keys.** Same as above — no encryption means no key
+  management yet.
+
+Plan for v2 (post-TestFlight):
 - Encrypt 1-to-1 messages with the **Signal Protocol** via the
-  official `libsignal` Swift bindings. This gives Double-Ratchet,
-  forward secrecy, and post-compromise security out of the box. We
-  publish prekey bundles to Supabase, fetch the recipient's bundle
+  official `libsignal` Swift bindings, or a hand-rolled Double
+  Ratchet on `CryptoKit` if libsignal SPM stays broken in our setup.
+- Publish prekey bundles to Supabase, fetch the recipient's bundle
   before sending the first message in a session.
-- Store on the server only encrypted ciphertext + minimal metadata
-  (sender id, recipient id, timestamp). The server CANNOT read
-  message content.
-- Use TLS to Supabase (Apple App Transport Security default), plan
-  to add SPKI pinning before public launch.
-- Implement APNs push for offline delivery. Push payload will be
-  generic ("New message") and the iOS app downloads + decrypts.
-- Group encryption is harder. v1 will be **server-readable groups**
-  (honest about it in the UI); v2 will look at MLS (RFC 9420).
+- Store on the server only encrypted ciphertext + minimal metadata.
+- Add SPKI pinning before public launch.
+- APNs push for offline delivery; payload is generic ("New
+  message") and the iOS app decrypts after waking.
+- Group encryption: v2 ships **Sender Keys**, v3 looks at MLS
+  (RFC 9420) if it stabilises in Swift.
 
 ## What you should NOT use Letychka for
 
