@@ -172,6 +172,104 @@ final class Global: ObservableObject {
         }
     }
 
+    /// Create a group chat with `name` and `members` (besides me). Returns
+    /// the new chat id, or nil on failure. I become the owner.
+    func createGroup(name: String, members: [Profile]) async -> UUID? {
+        guard let myID = me?.id else { return nil }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        do {
+            struct NewChat: Encodable {
+                let kind: String
+                let name: String
+                let created_by: UUID
+            }
+            let created: [Chat] = try await Supa.shared.client
+                .from("chats")
+                .insert(NewChat(kind: "group", name: trimmed, created_by: myID))
+                .select("id,kind,name,created_at")
+                .execute()
+                .value
+            guard let chat = created.first else { return nil }
+            struct NewMember: Encodable {
+                let chat_id: UUID
+                let user_id: UUID
+                let role: String
+            }
+            try await Supa.shared.client
+                .from("chat_members")
+                .insert(NewMember(chat_id: chat.id,
+                                  user_id: myID, role: "owner"))
+                .execute()
+            for m in members where m.id != myID {
+                try? await Supa.shared.client
+                    .from("chat_members")
+                    .insert(NewMember(chat_id: chat.id,
+                                      user_id: m.id, role: "member"))
+                    .execute()
+            }
+            await refresh()
+            return chat.id
+        } catch {
+            print("Global.createGroup failed: \(error)")
+            return nil
+        }
+    }
+
+    /// Rename a group (owner/admin only on the server side; we just try).
+    func renameGroup(_ chatID: UUID, name: String) async {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        struct Update: Encodable { let name: String }
+        do {
+            try await Supa.shared.client
+                .from("chats")
+                .update(Update(name: trimmed))
+                .eq("id", value: chatID)
+                .execute()
+            await refresh()
+        } catch {
+            print("Global.renameGroup failed: \(error)")
+        }
+    }
+
+    /// Leave a chat (delete my membership). Server policy allows me to
+    /// delete my own row.
+    func leave(_ chatID: UUID) async {
+        guard let myID = me?.id else { return }
+        do {
+            try await Supa.shared.client
+                .from("chat_members")
+                .delete()
+                .eq("chat_id", value: chatID)
+                .eq("user_id", value: myID)
+                .execute()
+            await refresh()
+        } catch {
+            print("Global.leave failed: \(error)")
+        }
+    }
+
+    /// Add another user to a group I admin/own. The server enforces the
+    /// rule, we just send the row.
+    func addMember(_ chatID: UUID, user: Profile) async {
+        struct NewMember: Encodable {
+            let chat_id: UUID
+            let user_id: UUID
+            let role: String
+        }
+        do {
+            try await Supa.shared.client
+                .from("chat_members")
+                .insert(NewMember(chat_id: chatID, user_id: user.id,
+                                  role: "member"))
+                .execute()
+            await refresh()
+        } catch {
+            print("Global.addMember failed: \(error)")
+        }
+    }
+
     /// Load recent messages for a chat and start a light polling loop that
     /// pulls anything newer than the last id every ~2 seconds. Simpler and
     /// more portable than Realtime; good enough for v1 + low message rates.

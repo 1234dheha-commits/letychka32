@@ -5,6 +5,7 @@ import AuthenticationServices
 
 struct RootView: View {
     @StateObject private var ble = BLEMessenger.shared
+    @ObservedObject private var global = Global.shared
     @AppStorage(AppTheme.key) private var themeMode = "dark"
     @AppStorage("hideHints") private var hideHints = false
     @AppStorage("nearbyNotify") private var nearbyNotify = false
@@ -311,6 +312,32 @@ struct RootView: View {
                     Text(joinedText)
                         .font(.system(size: 12))
                         .foregroundStyle(Theme.muted(scheme))
+                }
+                if netMode != "ble" {
+                    Section(L("Your global username")) {
+                        HStack {
+                            Text(global.me?.username
+                                 ?? Ident.defaultNick)
+                                .font(.system(size: 15,
+                                              weight: .semibold))
+                                .foregroundStyle(Theme.text(scheme))
+                                .textSelection(.enabled)
+                                .lineLimit(1)
+                            Spacer()
+                            Button {
+                                UIPasteboard.general.string =
+                                    global.me?.username
+                                    ?? Ident.defaultNick
+                            } label: {
+                                Image(systemName: "doc.on.doc")
+                            }
+                        }
+                        if !hideHints {
+                            Text(L("Share this so others can find you in Global. It is created automatically when Global mode is enabled."))
+                                .font(.system(size: 12))
+                                .foregroundStyle(Theme.muted(scheme))
+                        }
+                    }
                 }
                 Section(L("Avatar")) {
                     HStack(spacing: 14) {

@@ -8,6 +8,7 @@ struct GlobalChatView: View {
     let row: Global.ChatRow
 
     @State private var input: String = ""
+    @State private var showInfo = false
 
     private static let timeFmt: DateFormatter = {
         let f = DateFormatter()
@@ -54,6 +55,18 @@ struct GlobalChatView: View {
         }
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if row.chat.kind == .group {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showInfo = true } label: {
+                        Image(systemName: "info.circle")
+                    }
+                }
+            }
+        }
+        .navigationDestination(isPresented: $showInfo) {
+            GroupSettingsView(row: row)
+        }
         .task { await g.openChat(row.chat.id) }
         .onDisappear { Task { await g.closeChat() } }
     }

@@ -8,6 +8,7 @@ struct GlobalChatsView: View {
     @Environment(\.colorScheme) private var scheme
     @State private var openChatID: UUID?
     @State private var showSearch = false
+    @State private var showCreateGroup = false
 
     private static let timeFmt: DateFormatter = {
         let f = DateFormatter()
@@ -43,8 +44,21 @@ struct GlobalChatsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button { showSearch = true } label: {
-                    Image(systemName: "magnifyingglass")
+                Menu {
+                    Button {
+                        showSearch = true
+                    } label: {
+                        Label(L("New direct chat"),
+                              systemImage: "person.crop.circle.badge.plus")
+                    }
+                    Button {
+                        showCreateGroup = true
+                    } label: {
+                        Label(L("New group"),
+                              systemImage: "person.3.fill")
+                    }
+                } label: {
+                    Image(systemName: "plus")
                 }
             }
         }
@@ -62,6 +76,14 @@ struct GlobalChatsView: View {
                     }
                 }
             } }
+        }
+        .sheet(isPresented: $showCreateGroup) {
+            NavigationStack {
+                CreateGroupView { newID in
+                    showCreateGroup = false
+                    openChatID = newID
+                }
+            }
         }
         .task { await g.refresh() }
         .refreshable { await g.refresh() }

@@ -38,6 +38,7 @@ final class Supa {
                 }
             }
             await ensureProfile()
+            await bootstrapGlobal()
         }
     }
 
@@ -54,9 +55,17 @@ final class Supa {
                 )
             )
             await ensureProfile()
+            await bootstrapGlobal()
         } catch {
             print("Supa: Apple sign-in failed: \(error)")
         }
+    }
+
+    /// After we have a session and a profile row, hydrate the global data
+    /// layer so the username is available everywhere immediately.
+    @MainActor
+    private func bootstrapGlobal() async {
+        await Global.shared.refresh()
     }
 
     @MainActor
