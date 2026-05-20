@@ -200,6 +200,7 @@ struct RootView: View {
                         Text(L("Bluetooth and Global")).tag("both")
                     }
                     .pickerStyle(.menu)
+                    .labelsHidden()
                     if !hideHints {
                         Text(L("Global mode is in early beta. Direct chats, search by username and groups work. Messages travel through Supabase (EU) and are not yet end-to-end encrypted, so the server operator could read them. Bluetooth mode stays fully offline and end-to-end encrypted as before."))
                             .font(.system(size: 12))
@@ -233,6 +234,7 @@ struct RootView: View {
                         Text("Русский").tag("ru")
                     }
                     .pickerStyle(.menu)
+                    .labelsHidden()
                 }
                 Section(L("Appearance")) {
                     Picker(L("Theme"), selection: $themeMode) {
@@ -240,6 +242,7 @@ struct RootView: View {
                         Text(L("Dark")).tag("dark")
                     }
                     .pickerStyle(.segmented)
+                    .labelsHidden()
                     Toggle(L("Hide hints"), isOn: $hideHints)
                 }
                 if !ble.blocked.isEmpty {
@@ -422,7 +425,7 @@ struct RootView: View {
                 AvatarStore.clear()
                 avatar = nil
                 avatarItem = nil
-                nickField = "Anon"
+                nickField = Ident.defaultNick
             }
             Button(L("Cancel"), role: .cancel) {}
         }

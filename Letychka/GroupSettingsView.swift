@@ -6,15 +6,21 @@ struct GroupSettingsView: View {
     @Environment(\.colorScheme) private var scheme
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var g = Global.shared
-    let row: Global.ChatRow
+    let chatID: UUID
 
-    @State private var name: String
+    @State private var name: String = ""
     @State private var showAdd = false
     @State private var leaveConfirm = false
 
     init(row: Global.ChatRow) {
-        self.row = row
+        self.chatID = row.chat.id
         _name = State(initialValue: row.chat.name ?? "")
+    }
+
+    /// Always pull the fresh row out of the live chats list so a rename or
+    /// member change updates the view immediately.
+    private var row: Global.ChatRow? {
+        g.chats.first(where: { $0.chat.id == chatID })
     }
 
     var body: some View {
@@ -24,10 +30,10 @@ struct GroupSettingsView: View {
                 Section(L("Name")) {
                     HStack {
                         TextField(L("Group name"), text: $name)
-                        if name != (row.chat.name ?? "") {
+                        if name != (row?.chat.name ?? "") {
                             Button(L("Save")) {
                                 Task {
-                                    await g.renameGroup(row.chat.id, name: name)
+                                    await g.renameGroup(chatID, name: name)
                                 }
                             }
                             .font(.system(size: 14, weight: .semibold))
@@ -36,7 +42,7 @@ struct GroupSettingsView: View {
                     }
                 }
                 Section(L("Members")) {
-                    ForEach(row.members) { p in
+                    ForEach(row?.members ?? []) { p in
                         HStack(spacing: 10) {
                             Circle().fill(Theme.accent.opacity(0.18))
                                 .frame(width: 28, height: 28)
@@ -82,11 +88,15 @@ struct GroupSettingsView: View {
         }
         .navigationTitle(L("Group info"))
         .navigationBarTitleDisplayMode(.inline)
+        .onChange(of: row?.chat.name) { _, newName in
+            // Server confirmed a rename, mirror it into the editor field.
+            if let newName, name != newName { name = newName }
+        }
         .sheet(isPresented: $showAdd) {
             NavigationStack {
                 UserSearchView { user in
                     showAdd = false
-                    Task { await g.addMember(row.chat.id, user: user) }
+                    Task { await g.addMember(chatID, user: user) }
                 }
             }
         }
@@ -94,7 +104,7 @@ struct GroupSettingsView: View {
             Button(L("Cancel"), role: .cancel) {}
             Button(L("Leave"), role: .destructive) {
                 Task {
-                    await g.leave(row.chat.id)
+                    await g.leave(chatID)
                     dismiss()
                 }
             }

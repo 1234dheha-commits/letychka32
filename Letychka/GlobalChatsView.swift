@@ -99,7 +99,7 @@ struct GlobalChatsView: View {
             Text(L("No global chats yet"))
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(Theme.text(scheme))
-            Text(L("Tap the magnifier to find someone by username."))
+            Text(L("Tap + to find someone by username or start a new group."))
                 .font(.system(size: 13))
                 .foregroundStyle(Theme.muted(scheme))
                 .multilineTextAlignment(.center)

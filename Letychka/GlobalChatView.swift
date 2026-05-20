@@ -5,16 +5,28 @@ import SwiftUI
 struct GlobalChatView: View {
     @Environment(\.colorScheme) private var scheme
     @ObservedObject var g = Global.shared
-    let row: Global.ChatRow
+    /// The row at the time we navigated in. Used as a fallback when the
+    /// live row is briefly missing (e.g. while a just-created group is
+    /// still propagating into `g.chats`).
+    let initialRow: Global.ChatRow
 
     @State private var input: String = ""
     @State private var showInfo = false
+
+    init(row: Global.ChatRow) { self.initialRow = row }
 
     private static let timeFmt: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "HH:mm"
         return f
     }()
+
+    /// Always look up the live row first so a rename or member change
+    /// reflects in the title/toolbar without leaving the chat.
+    private var row: Global.ChatRow {
+        g.chats.first(where: { $0.chat.id == initialRow.chat.id })
+            ?? initialRow
+    }
 
     private var msgs: [Global.Message] { g.messages[row.chat.id] ?? [] }
 

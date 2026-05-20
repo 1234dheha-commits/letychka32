@@ -1,0 +1,37 @@
+polish: translations + theme/picker dedup + optimistic send + live row
+
+Fixes the issues called out after the first TestFlight build:
+
+Translations (ru / uk / en) for every string added in Phase F + G:
+Global, Find people, New direct chat, New group, Group chat,
+Group info, Group name, Members, Name, Save, Create, Leave,
+Leave group, Leave this group?, Add member, Add by username,
+Type to search, Username (e.g. letychkauser...), Your global
+username, No global chats yet, No messages yet, No one found.,
+the long disclaimer text, etc. The old "in progress" hint is
+kept so any iOS still showing it does not fall back to English.
+
+Picker doubling: the Settings tab repeated the section header
+inline as the Picker label (e.g. "Network mode" header + "Network
+mode" picker label on the row). Added .labelsHidden() on the
+three Pickers (Network mode, Language, Theme) so only the
+section header is shown.
+
+"Anon" was still hardcoded in one spot of the delete-account
+flow; replaced with Ident.defaultNick so the nick field falls
+back to letychkauser#xxx.
+
+Global.sendText now uses insert.select().value so the server row
+(with canonical id + created_at) is returned and appended to the
+local messages immediately. Own bubble appears right away instead
+of after the 2-second poll cycle.
+
+GroupSettingsView and GlobalChatView now derive the row from
+Global.shared.chats by id instead of holding a let-bound copy.
+Rename / add-member / leave update the title and members list
+without leaving the view.
+
+GlobalChatsView empty hint now reflects the new "+" menu (was
+"Tap the magnifier...").
+
+Co-Authored-By: Anton 4.5 &lt;noreply@anthropic.com&gt;

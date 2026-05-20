@@ -321,8 +321,9 @@ final class Global: ObservableObject {
         }
     }
 
-    /// Insert a text message. The Realtime channel will echo it back so the
-    /// UI updates the same way as for incoming messages.
+    /// Insert a text message. Use insert.select to get the server row back
+    /// (with the canonical id + created_at) and drop it into the local list
+    /// so our own bubble appears immediately instead of after the 2s poll.
     func sendText(_ text: String, to chatID: UUID) async {
         guard let myID = me?.id else { return }
         let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -333,10 +334,19 @@ final class Global: ObservableObject {
             let body: String
         }
         do {
-            try await Supa.shared.client
+            let rows: [Message] = try await Supa.shared.client
                 .from("messages")
                 .insert(NewMsg(chat_id: chatID, sender_id: myID, body: body))
+                .select("id,chat_id,sender_id,body,media_url,created_at")
                 .execute()
+                .value
+            if let m = rows.first {
+                var list = messages[chatID] ?? []
+                if !list.contains(where: { $0.id == m.id }) {
+                    list.append(m)
+                    messages[chatID] = list
+                }
+            }
         } catch {
             print("Global.sendText failed: \(error)")
         }
