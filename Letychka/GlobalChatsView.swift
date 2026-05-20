@@ -9,6 +9,12 @@ struct GlobalChatsView: View {
     @State private var openChatID: UUID?
     @State private var showSearch = false
     @State private var showCreateGroup = false
+    /// When a sheet wants to open a chat, it stashes the id here and
+    /// dismisses itself. We only actually navigate from onDismiss, so the
+    /// push is not racing the sheet's dismissal animation (which on iOS
+    /// silently swallows the navigation request and looks like the sheet
+    /// just closed and nothing happened).
+    @State private var pendingChatID: UUID?
 
     private static let timeFmt: DateFormatter = {
         let f = DateFormatter()
@@ -67,26 +73,37 @@ struct GlobalChatsView: View {
                 GlobalChatView(row: row)
             }
         }
-        .sheet(isPresented: $showSearch) {
+        .sheet(isPresented: $showSearch, onDismiss: navigateToPending) {
             NavigationStack { UserSearchView { user in
-                showSearch = false
                 Task {
                     if let id = await g.openDirectChat(with: user) {
-                        openChatID = id
+                        await MainActor.run {
+                            pendingChatID = id
+                            showSearch = false
+                        }
                     }
                 }
             } }
         }
-        .sheet(isPresented: $showCreateGroup) {
+        .sheet(isPresented: $showCreateGroup,
+               onDismiss: navigateToPending) {
             NavigationStack {
                 CreateGroupView { newID in
+                    pendingChatID = newID
                     showCreateGroup = false
-                    openChatID = newID
                 }
             }
         }
         .task { await g.refresh() }
         .refreshable { await g.refresh() }
+    }
+
+    /// Fires after a sheet has finished its dismiss animation; only then is
+    /// it safe to push a NavigationStack destination on top.
+    private func navigateToPending() {
+        guard let id = pendingChatID else { return }
+        pendingChatID = nil
+        openChatID = id
     }
 
     @ViewBuilder

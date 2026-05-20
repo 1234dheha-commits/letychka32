@@ -39,7 +39,7 @@ struct UserSearchView: View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(Theme.muted(scheme))
-            TextField(L("Username (e.g. letychkauser…)"),
+            TextField(L("Username"),
                       text: $query)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()

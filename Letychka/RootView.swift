@@ -2,6 +2,7 @@ import SwiftUI
 import UIKit
 import PhotosUI
 import AuthenticationServices
+import CoreImage.CIFilterBuiltins
 
 struct RootView: View {
     @StateObject private var ble = BLEMessenger.shared
@@ -10,6 +11,7 @@ struct RootView: View {
     @AppStorage("hideHints") private var hideHints = false
     @AppStorage("nearbyNotify") private var nearbyNotify = false
     @AppStorage("netMode") private var netMode = "ble"   // ble | global | both
+    @AppStorage("hideTabLabels") private var hideTabLabels = false
     @AppStorage(Lang.key) private var appLang = "system"
     @Environment(\.colorScheme) private var scheme
     @State private var nickField = ""
@@ -76,36 +78,38 @@ struct RootView: View {
     private var mainTabs: some View {
         TabView(selection: $tab) {
             radarTab
-                .tabItem {
-                    Label(L("Radar"),
-                          systemImage: "dot.radiowaves.left.and.right")
-                }
+                .tabItem { tabLabel(L("Radar"),
+                                    icon: "dot.radiowaves.left.and.right") }
                 .tag(0)
             chatsTab
-                .tabItem {
-                    Label(L("Chats"),
-                          systemImage: "bubble.left.and.bubble.right.fill")
-                }
+                .tabItem { tabLabel(L("Chats"),
+                                    icon: "bubble.left.and.bubble.right.fill") }
                 .badge(ble.unreadTotal + ble.roomUnread)
                 .tag(1)
             if netMode != "ble" {
                 globalTab
-                    .tabItem {
-                        Label(L("Global"), systemImage: "globe")
-                    }
+                    .tabItem { tabLabel(L("Global"), icon: "globe") }
                     .tag(4)
             }
             settingsTab
-                .tabItem {
-                    Label(L("Settings"), systemImage: "gearshape.fill")
-                }
+                .tabItem { tabLabel(L("Settings"),
+                                    icon: "gearshape.fill") }
                 .tag(2)
             profileTab
-                .tabItem {
-                    Label(L("Profile"),
-                          systemImage: "person.crop.circle.fill")
-                }
+                .tabItem { tabLabel(L("Profile"),
+                                    icon: "person.crop.circle.fill") }
                 .tag(3)
+        }
+    }
+
+    /// One source of truth for tab item content. When `hideTabLabels` is on
+    /// we render the icon only; SwiftUI auto-centres it in the tab slot.
+    @ViewBuilder
+    private func tabLabel(_ text: String, icon: String) -> some View {
+        if hideTabLabels {
+            Image(systemName: icon)
+        } else {
+            Label(text, systemImage: icon)
         }
     }
 
@@ -247,6 +251,12 @@ struct RootView: View {
                     .pickerStyle(.segmented)
                     .labelsHidden()
                     Toggle(L("Hide hints"), isOn: $hideHints)
+                    Toggle(L("Hide tab labels"), isOn: $hideTabLabels)
+                    if !hideHints {
+                        Text(L("Hides the small text under each tab icon so only the icons are shown."))
+                            .font(.system(size: 12))
+                            .foregroundStyle(Theme.muted(scheme))
+                    }
                 }
                 if !ble.blocked.isEmpty {
                     Section(L("Blocked")) {
@@ -318,6 +328,31 @@ struct RootView: View {
                     Text(joinedText)
                         .font(.system(size: 12))
                         .foregroundStyle(Theme.muted(scheme))
+                }
+                if netMode != "ble", let myName = global.me?.username,
+                   let qr = Self.qrImage(for: myName) {
+                    Section(L("Share code")) {
+                        HStack {
+                            Spacer()
+                            Image(uiImage: qr)
+                                .interpolation(.none)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 180, height: 180)
+                            Spacer()
+                        }
+                        if !hideHints {
+                            Text(L("Friends scan this with the Camera app to copy your username and find you."))
+                                .font(.system(size: 12))
+                                .foregroundStyle(Theme.muted(scheme))
+                        }
+                        Button {
+                            UIPasteboard.general.string = myName
+                        } label: {
+                            Label(L("Copy username"),
+                                  systemImage: "doc.on.doc")
+                        }
+                    }
                 }
                 if netMode != "ble" {
                     Section(L("Your global username")) {
@@ -524,9 +559,9 @@ struct RootView: View {
                     globalNickError = L("Name cannot be empty.")
                     if let u = global.me?.username { globalNickField = u }
                 case .tooShort:
-                    globalNickError = L("Name is too short (min 3 letters).")
+                    globalNickError = L("Name is too short.")
                 case .tooLong:
-                    globalNickError = L("Name is too long (max 30 letters).")
+                    globalNickError = L("Name is too long.")
                 case .taken:
                     globalNickError = L("That name is already in use.")
                 case .offline:
@@ -553,6 +588,22 @@ struct RootView: View {
                                  ?? Ident.defaultNick(for: pid),
                              rssi: -65, lastSeen: Date())
         }
+    }
+
+    /// QR code with the user's global username inside. Friends scan it
+    /// (Camera or any QR reader) and get the exact string to paste into
+    /// the search. Black-on-clear so it adapts to the chosen theme.
+    static func qrImage(for text: String) -> UIImage? {
+        let filter = CIFilter.qrCodeGenerator()
+        filter.message = Data(text.utf8)
+        filter.correctionLevel = "M"
+        guard let output = filter.outputImage else { return nil }
+        let scaled = output.transformed(by:
+            CGAffineTransform(scaleX: 12, y: 12))
+        let ctx = CIContext()
+        guard let cg = ctx.createCGImage(scaled, from: scaled.extent)
+        else { return nil }
+        return UIImage(cgImage: cg)
     }
 
     /// A very small avatar (~64px JPEG) to broadcast over Bluetooth.

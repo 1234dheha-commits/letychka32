@@ -124,7 +124,15 @@
 "Add member" = "Добавить участника";
 "Add by username" = "Добавить по имени";
 "Type to search" = "Начните печатать для поиска";
-"Username (e.g. letychkauser…)" = "Имя пользователя (например letychkauser…)";
+"Username" = "Имя пользователя";
+"Friday plans" = "Планы на пятницу";
+"Name is too short." = "Имя слишком короткое.";
+"Name is too long." = "Имя слишком длинное.";
+"Hide tab labels" = "Скрыть подписи табов";
+"Hides the small text under each tab icon so only the icons are shown." = "Прячет надписи под иконками внизу, остаются только сами иконки.";
+"Share code" = "Код для друзей";
+"Friends scan this with the Camera app to copy your username and find you." = "Друг наводит Камеру на этот код, чтобы скопировать ваше имя и найти вас.";
+"Copy username" = "Скопировать имя";
 "Your global username" = "Ваше глобальное имя";
 "No global chats yet" = "Глобальных чатов пока нет";
 "No messages yet" = "Сообщений пока нет";
@@ -137,8 +145,6 @@
 "Share this so others can find you in Global. It is created automatically when Global mode is enabled." = "Поделитесь, чтобы вас могли найти в Глобальном режиме. Имя создаётся автоматически при включении режима.";
 "Share this so others can find you in Global. Changing it works as long as the new name is not taken." = "Поделитесь, чтобы вас могли найти в Глобальном режиме. Менять можно, если новое имя ещё не занято.";
 "Name cannot be empty." = "Имя не может быть пустым.";
-"Name is too short (min 3 letters)." = "Имя слишком короткое (минимум 3 символа).";
-"Name is too long (max 30 letters)." = "Имя слишком длинное (максимум 30 символов).";
 "That name is already in use." = "Это имя уже занято.";
 "Could not reach the server. Try again." = "Не удалось связаться с сервером. Попробуйте ещё раз.";
 "You will stop receiving messages. You can be added back by an admin." = "Вы перестанете получать сообщения. Админ сможет вернуть вас обратно.";

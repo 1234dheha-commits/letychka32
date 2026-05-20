@@ -20,7 +20,7 @@ struct CreateGroupView: View {
             Theme.bg(scheme).ignoresSafeArea()
             Form {
                 Section(L("Group name")) {
-                    TextField(L("e.g. Friday plans"), text: $name)
+                    TextField(L("Friday plans"), text: $name)
                 }
                 if !selected.isEmpty {
                     Section(L("Members")) {
@@ -105,7 +105,9 @@ struct CreateGroupView: View {
         defer { creating = false }
         if let id = await Global.shared.createGroup(name: name,
                                                     members: selected) {
-            dismiss()
+            // The parent's `pendingChatID` + sheet onDismiss handles the
+            // actual dismissal + navigation so the push does not race the
+            // sheet's dismiss animation.
             onCreated(id)
         }
     }
