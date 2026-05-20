@@ -11,12 +11,13 @@ struct RootView: View {
     @AppStorage(Lang.key) private var appLang = "system"
     @Environment(\.colorScheme) private var scheme
     @State private var nickField = ""
-    @State private var chatPeer: Peer?
-    @State private var showSettings = false
     @State private var avatar: UIImage?
     @State private var avatarItem: PhotosPickerItem?
     @State private var bypassBT = false
     @State private var tab = 0
+    @State private var radarPeer: Peer?
+    @State private var chatsPeer: Peer?
+    @State private var showRoom = false
     @State private var showClearConfirm = false
     @AppStorage("appleUserID") private var appleUserID = ""
     @AppStorage("appleUserName") private var appleUserName = ""
@@ -24,49 +25,13 @@ struct RootView: View {
     @State private var showDeleteAccountConfirm = false
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Theme.bg(scheme).ignoresSafeArea()
-                VStack(spacing: 0) {
-                    header
-                    if ble.status == .on || bypassBT {
-                        Picker("", selection: $tab) {
-                            Text(L("Radar")).tag(0)
-                            Text(ble.unreadTotal > 0
-                                 ? L("Chats (%d)", ble.unreadTotal)
-                                 : L("Chats")).tag(1)
-                            Text(ble.roomUnread > 0
-                                 ? L("Room (%d)", ble.roomUnread)
-                                 : L("Room")).tag(2)
-                        }
-                        .pickerStyle(.segmented)
-                        .padding(.horizontal, 20)
-                        .padding(.top, 10)
-
-                        if tab == 0 {
-                            if !ble.visible {
-                                Text(L("You are hidden. Turn it back on in Settings."))
-                                    .font(.system(size: 13))
-                                    .foregroundStyle(Theme.accent)
-                                    .padding(.top, 6)
-                            }
-                            RadarView(ble: ble) { chatPeer = $0 }
-                                .padding(20)
-                            if !hideHints { footer }
-                        } else if tab == 1 {
-                            ChatsListView(ble: ble) { chatPeer = $0 }
-                        } else {
-                            RoomView(ble: ble)
-                        }
-                    } else {
-                        btRequiredView
-                    }
-                }
+        Group {
+            if ble.status == .on || bypassBT {
+                mainTabs
+            } else {
+                btRequiredView
+                    .background(Theme.bg(scheme).ignoresSafeArea())
             }
-            .navigationDestination(item: $chatPeer) { p in
-                ChatView(ble: ble, peer: p)
-            }
-            .sheet(isPresented: $showSettings) { settingsSheet }
         }
         .tint(Theme.accent)
         .onAppear {
@@ -77,11 +42,10 @@ struct RootView: View {
             }
             ble.start()
             ble.setMyAvatar(Self.tinyAvatar(avatar))
-            if tab == 2 { ble.openRoom() } else { ble.closeRoom() }
             openPending()
         }
-        .onChange(of: tab) { _, t in
-            if t == 2 { ble.openRoom() } else { ble.closeRoom() }
+        .onChange(of: tab) { old, _ in
+            if old == 3 { ble.setNick(nickField) }
         }
         .onChange(of: avatarItem) { _, item in
             guard let item else { return }
@@ -102,20 +66,362 @@ struct RootView: View {
         }
     }
 
+    // MARK: Tabs
+
+    private var mainTabs: some View {
+        TabView(selection: $tab) {
+            radarTab
+                .tabItem {
+                    Label(L("Radar"),
+                          systemImage: "dot.radiowaves.left.and.right")
+                }
+                .tag(0)
+            chatsTab
+                .tabItem {
+                    Label(L("Chats"),
+                          systemImage: "bubble.left.and.bubble.right.fill")
+                }
+                .badge(ble.unreadTotal + ble.roomUnread)
+                .tag(1)
+            settingsTab
+                .tabItem {
+                    Label(L("Settings"), systemImage: "gearshape.fill")
+                }
+                .tag(2)
+            profileTab
+                .tabItem {
+                    Label(L("Profile"),
+                          systemImage: "person.crop.circle.fill")
+                }
+                .tag(3)
+        }
+    }
+
+    private var radarTab: some View {
+        NavigationStack {
+            ZStack {
+                Theme.bg(scheme).ignoresSafeArea()
+                VStack(spacing: 0) {
+                    if !ble.visible {
+                        Text(L("You are hidden. Turn it back on in Settings."))
+                            .font(.system(size: 13))
+                            .foregroundStyle(Theme.accent)
+                            .padding(.top, 6)
+                    }
+                    RadarView(ble: ble) { radarPeer = $0 }
+                        .padding(20)
+                    if !hideHints { footer }
+                }
+            }
+            .navigationTitle(L("Radar"))
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(item: $radarPeer) { p in
+                ChatView(ble: ble, peer: p)
+            }
+        }
+    }
+
+    private var chatsTab: some View {
+        NavigationStack {
+            ZStack {
+                Theme.bg(scheme).ignoresSafeArea()
+                VStack(spacing: 0) {
+                    roomRow
+                    ChatsListView(ble: ble) { chatsPeer = $0 }
+                }
+            }
+            .navigationTitle(L("Chats"))
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(item: $chatsPeer) { p in
+                ChatView(ble: ble, peer: p)
+            }
+            .navigationDestination(isPresented: $showRoom) {
+                RoomView(ble: ble)
+            }
+        }
+    }
+
+    private var roomRow: some View {
+        Button { showRoom = true } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "person.3.fill")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 44, height: 44)
+                    .background(Theme.accent, in: Circle())
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(L("Room"))
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Theme.text(scheme))
+                    Text(L("Everyone in Bluetooth range"))
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.muted(scheme))
+                }
+                Spacer()
+                if ble.roomUnread > 0 {
+                    Text("\(ble.roomUnread)")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(Theme.accent, in: Capsule())
+                }
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Theme.muted(scheme))
+            }
+            .padding(.horizontal, 16).padding(.vertical, 12)
+        }
+        .buttonStyle(.plain)
+        .overlay(Divider(), alignment: .bottom)
+    }
+
+    // MARK: Settings tab
+
+    private var settingsTab: some View {
+        NavigationStack {
+            Form {
+                Section(L("Nearby")) {
+                    Toggle(L("Show me on the radar"), isOn: Binding(
+                        get: { ble.visible },
+                        set: { ble.setVisible($0) }))
+                    if !hideHints {
+                        Text(L("Turn off to disconnect from the map. You become invisible to people nearby and your radar clears. Turn it back on to reconnect."))
+                            .font(.system(size: 12))
+                            .foregroundStyle(Theme.muted(scheme))
+                    }
+                    Toggle(L("Notify about people nearby"),
+                           isOn: $nearbyNotify)
+                    if !hideHints {
+                        Text(L("A small notification when someone new appears in Bluetooth range. Off by default."))
+                            .font(.system(size: 12))
+                            .foregroundStyle(Theme.muted(scheme))
+                    }
+                }
+                Section(L("Language")) {
+                    Picker(L("Language"), selection: Binding(
+                        get: { appLang },
+                        set: { appLang = $0; Lang.set($0) })) {
+                        Text(L("System default")).tag("system")
+                        Text("English").tag("en")
+                        Text("Українська").tag("uk")
+                        Text("Русский").tag("ru")
+                    }
+                    .pickerStyle(.menu)
+                }
+                Section(L("Appearance")) {
+                    Picker(L("Theme"), selection: $themeMode) {
+                        Text(L("Light")).tag("light")
+                        Text(L("Dark")).tag("dark")
+                    }
+                    .pickerStyle(.segmented)
+                    Toggle(L("Hide hints"), isOn: $hideHints)
+                }
+                if !ble.blocked.isEmpty {
+                    Section(L("Blocked")) {
+                        ForEach(Array(ble.blocked), id: \.self) { bid in
+                            HStack {
+                                Text(ble.names[bid] ?? L("Unknown"))
+                                    .font(.system(size: 15))
+                                    .foregroundStyle(Theme.text(scheme))
+                                Spacer()
+                                Button(L("Unblock")) { ble.unblock(bid) }
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(Theme.accent)
+                            }
+                        }
+                    }
+                }
+                Section(L("Privacy")) {
+                    if !hideHints {
+                        Text(L("Letychka has no account and no sign in. There is nothing to log out of: nothing about you is sent to any server. Your name, avatar and chats are stored only on this phone. Use the button below to wipe all of it."))
+                            .font(.system(size: 12))
+                            .foregroundStyle(Theme.muted(scheme))
+                    }
+                    Button(role: .destructive) {
+                        showClearConfirm = true
+                    } label: {
+                        Text(L("Clear everything on this phone"))
+                    }
+                }
+                if !hideHints {
+                    Section {
+                        Text(L("Letychka finds people near you over Bluetooth and lets you message them directly, with no internet and no servers. It stays anonymous and everything is kept only on your phone."))
+                            .font(.system(size: 13))
+                            .foregroundStyle(Theme.muted(scheme))
+                    }
+                }
+            }
+            .navigationTitle(L("Settings"))
+            .navigationBarTitleDisplayMode(.inline)
+            .alert(L("Clear everything?"), isPresented: $showClearConfirm) {
+                Button(L("Cancel"), role: .cancel) {}
+                Button(L("Clear"), role: .destructive) {
+                    ble.clearAll()
+                    AvatarStore.clear()
+                    avatar = nil
+                    avatarItem = nil
+                    nickField = "Anon"
+                }
+            } message: {
+                Text(L("Removes your name, avatar and all chats from this phone. This cannot be undone."))
+            }
+        }
+    }
+
+    // MARK: Profile tab
+
+    private var profileTab: some View {
+        NavigationStack {
+            Form {
+                Section(L("Account")) {
+                    if !appleUserID.isEmpty {
+                        signedInBlock
+                    } else {
+                        signedOutBlock
+                    }
+                }
+                Section(L("Your name")) {
+                    TextField(L("Anon"), text: $nickField)
+                        .onSubmit { ble.setNick(nickField) }
+                    Text(joinedText)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.muted(scheme))
+                }
+                Section(L("Avatar")) {
+                    HStack(spacing: 14) {
+                        if let a = avatar {
+                            Image(uiImage: a).resizable().scaledToFill()
+                                .frame(width: 56, height: 56)
+                                .clipShape(Circle())
+                        } else {
+                            Image(systemName: "person.crop.circle.fill")
+                                .font(.system(size: 52))
+                                .foregroundStyle(Theme.muted(scheme))
+                        }
+                        VStack(alignment: .leading, spacing: 8) {
+                            PhotosPicker(selection: $avatarItem, matching: .images) {
+                                Text(avatar == nil ? L("Choose photo") : L("Replace photo"))
+                            }
+                            if avatar != nil {
+                                Button(role: .destructive) {
+                                    AvatarStore.clear()
+                                    avatar = nil
+                                    avatarItem = nil
+                                    ble.setMyAvatar(nil)
+                                } label: {
+                                    Text(L("Remove photo"))
+                                }
+                            }
+                        }
+                    }
+                    if !hideHints {
+                        Text(L("Your avatar is shared over Bluetooth with people near you so they see your photo. It is tiny and never goes to any server."))
+                            .font(.system(size: 12))
+                            .foregroundStyle(Theme.muted(scheme))
+                    }
+                }
+            }
+            .navigationTitle(L("Profile"))
+            .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+
+    @ViewBuilder
+    private var signedInBlock: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "checkmark.seal.fill")
+                .foregroundStyle(Theme.accent)
+                .font(.system(size: 20))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(appleUserName.isEmpty
+                     ? L("Signed in with Apple")
+                     : L("Signed in as %@", appleUserName))
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Theme.text(scheme))
+                if !hideHints {
+                    Text(L("Optional. Nothing is stored on a server."))
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.muted(scheme))
+                }
+            }
+            Spacer()
+        }
+        Button(role: .destructive) {
+            appleUserID = ""
+            appleUserName = ""
+        } label: {
+            Label(L("Sign out"),
+                  systemImage: "rectangle.portrait.and.arrow.right")
+        }
+        Button(role: .destructive) {
+            showDeleteAccountConfirm = true
+        } label: {
+            Label(L("Delete account"), systemImage: "trash.fill")
+        }
+        .confirmationDialog(
+            L("Delete account and all local data? This removes your Apple sign-in, your name, avatar and chats from this phone. It cannot be undone."),
+            isPresented: $showDeleteAccountConfirm,
+            titleVisibility: .visible
+        ) {
+            Button(L("Delete"), role: .destructive) {
+                appleUserID = ""
+                appleUserName = ""
+                ble.clearAll()
+                AvatarStore.clear()
+                avatar = nil
+                avatarItem = nil
+                nickField = "Anon"
+            }
+            Button(L("Cancel"), role: .cancel) {}
+        }
+    }
+
+    @ViewBuilder
+    private var signedOutBlock: some View {
+        if !hideHints {
+            Text(L("Sign in with Apple is optional. Letychka works fully without it and stays anonymous over Bluetooth. Signing in just lets you have an account you can delete."))
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.muted(scheme))
+        }
+        SignInWithAppleButton(.signIn,
+            onRequest: { req in req.requestedScopes = [.fullName] },
+            onCompletion: { result in
+                switch result {
+                case .success(let auth):
+                    if let cred = auth.credential as? ASAuthorizationAppleIDCredential {
+                        appleUserID = cred.user
+                        if let fn = cred.fullName?.givenName, !fn.isEmpty {
+                            appleUserName = fn
+                        }
+                    }
+                    signInError = nil
+                case .failure(let err):
+                    signInError = err.localizedDescription
+                }
+            })
+        .signInWithAppleButtonStyle(scheme == .dark ? .white : .black)
+        .frame(height: 44)
+        if let msg = signInError {
+            Text(msg).font(.system(size: 12)).foregroundStyle(.red)
+        }
+    }
+
+    // MARK: Helpers
+
     /// Consume a "tapped a notification" request: jump to that chat / Room.
     private func openPending() {
         if ble.pendingOpenRoom {
             ble.pendingOpenRoom = false
-            chatPeer = nil
-            tab = 2
-            ble.openRoom()
+            tab = 1
+            chatsPeer = nil
+            showRoom = true
             return
         }
         if let pid = ble.pendingOpenPeer {
             ble.pendingOpenPeer = nil
             tab = 1
-            chatPeer = Peer(id: pid, nick: ble.names[pid] ?? L("Anon"),
-                            rssi: -65, lastSeen: Date())
+            chatsPeer = Peer(id: pid, nick: ble.names[pid] ?? L("Anon"),
+                             rssi: -65, lastSeen: Date())
         }
     }
 
@@ -128,26 +434,6 @@ struct RootView: View {
         let r = UIGraphicsImageRenderer(size: sz)
         let img = r.image { _ in image.draw(in: CGRect(origin: .zero, size: sz)) }
         return img.jpegData(compressionQuality: 0.4)
-    }
-
-    private var header: some View {
-        HStack {
-            if let a = avatar {
-                Button { showSettings = true } label: {
-                    Image(uiImage: a).resizable().scaledToFill()
-                        .frame(width: 34, height: 34)
-                        .clipShape(Circle())
-                        .overlay(Circle().stroke(Theme.line(scheme), lineWidth: 0.5))
-                }
-                .buttonStyle(.plain)
-            }
-            Spacer()
-            Button { showSettings = true } label: {
-                Image(systemName: "slider.horizontal.3")
-                    .foregroundStyle(Theme.text(scheme))
-            }
-        }
-        .padding(.horizontal, 20).padding(.top, 8)
     }
 
     private var footer: some View {
@@ -225,222 +511,5 @@ struct RootView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private var settingsSheet: some View {
-        NavigationStack {
-            Form {
-                Section(L("Account")) {
-                    if !appleUserID.isEmpty {
-                        HStack(spacing: 12) {
-                            Image(systemName: "checkmark.seal.fill")
-                                .foregroundStyle(Theme.accent)
-                                .font(.system(size: 20))
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(appleUserName.isEmpty
-                                     ? L("Signed in with Apple")
-                                     : L("Signed in as %@", appleUserName))
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundStyle(Theme.text(scheme))
-                                if !hideHints {
-                                    Text(L("Optional. Nothing is stored on a server."))
-                                        .font(.system(size: 11))
-                                        .foregroundStyle(Theme.muted(scheme))
-                                }
-                            }
-                            Spacer()
-                        }
-                        Button(role: .destructive) {
-                            appleUserID = ""
-                            appleUserName = ""
-                        } label: {
-                            Label(L("Sign out"), systemImage: "rectangle.portrait.and.arrow.right")
-                        }
-                        Button(role: .destructive) {
-                            showDeleteAccountConfirm = true
-                        } label: {
-                            Label(L("Delete account"), systemImage: "trash.fill")
-                        }
-                        .confirmationDialog(
-                            L("Delete account and all local data? This removes your Apple sign-in, your name, avatar and chats from this phone. It cannot be undone."),
-                            isPresented: $showDeleteAccountConfirm,
-                            titleVisibility: .visible
-                        ) {
-                            Button(L("Delete"), role: .destructive) {
-                                appleUserID = ""
-                                appleUserName = ""
-                                ble.clearAll()
-                                AvatarStore.clear()
-                                avatar = nil
-                                avatarItem = nil
-                                nickField = "Anon"
-                            }
-                            Button(L("Cancel"), role: .cancel) {}
-                        }
-                    } else {
-                        if !hideHints {
-                            Text(L("Sign in with Apple is optional. Letychka works fully without it and stays anonymous over Bluetooth. Signing in just lets you have an account you can delete."))
-                                .font(.system(size: 12))
-                                .foregroundStyle(Theme.muted(scheme))
-                        }
-                        SignInWithAppleButton(.signIn,
-                            onRequest: { req in req.requestedScopes = [.fullName] },
-                            onCompletion: { result in
-                                switch result {
-                                case .success(let auth):
-                                    if let cred = auth.credential as? ASAuthorizationAppleIDCredential {
-                                        appleUserID = cred.user
-                                        if let fn = cred.fullName?.givenName, !fn.isEmpty {
-                                            appleUserName = fn
-                                        }
-                                    }
-                                    signInError = nil
-                                case .failure(let err):
-                                    signInError = err.localizedDescription
-                                }
-                            })
-                        .signInWithAppleButtonStyle(scheme == .dark ? .white : .black)
-                        .frame(height: 44)
-                        if let msg = signInError {
-                            Text(msg).font(.system(size: 12)).foregroundStyle(.red)
-                        }
-                    }
-                }
-                Section(L("Your name")) {
-                    TextField(L("Anon"), text: $nickField)
-                        .onSubmit { ble.setNick(nickField) }
-                    Text(joinedText)
-                        .font(.system(size: 12))
-                        .foregroundStyle(Theme.muted(scheme))
-                }
-                Section(L("Nearby")) {
-                    Toggle(L("Show me on the radar"), isOn: Binding(
-                        get: { ble.visible },
-                        set: { ble.setVisible($0) }))
-                    if !hideHints {
-                        Text(L("Turn off to disconnect from the map. You become invisible to people nearby and your radar clears. Turn it back on to reconnect."))
-                            .font(.system(size: 12))
-                            .foregroundStyle(Theme.muted(scheme))
-                    }
-                    Toggle(L("Notify about people nearby"),
-                           isOn: $nearbyNotify)
-                    if !hideHints {
-                        Text(L("A small notification when someone new appears in Bluetooth range. Off by default."))
-                            .font(.system(size: 12))
-                            .foregroundStyle(Theme.muted(scheme))
-                    }
-                }
-                Section(L("Avatar")) {
-                    HStack(spacing: 14) {
-                        if let a = avatar {
-                            Image(uiImage: a).resizable().scaledToFill()
-                                .frame(width: 56, height: 56)
-                                .clipShape(Circle())
-                        } else {
-                            Image(systemName: "person.crop.circle.fill")
-                                .font(.system(size: 52))
-                                .foregroundStyle(Theme.muted(scheme))
-                        }
-                        VStack(alignment: .leading, spacing: 8) {
-                            PhotosPicker(selection: $avatarItem, matching: .images) {
-                                Text(avatar == nil ? L("Choose photo") : L("Replace photo"))
-                            }
-                            if avatar != nil {
-                                Button(role: .destructive) {
-                                    AvatarStore.clear()
-                                    avatar = nil
-                                    avatarItem = nil
-                                    ble.setMyAvatar(nil)
-                                } label: {
-                                    Text(L("Remove photo"))
-                                }
-                            }
-                        }
-                    }
-                    if !hideHints {
-                        Text(L("Your avatar is shared over Bluetooth with people near you so they see your photo. It is tiny and never goes to any server."))
-                            .font(.system(size: 12))
-                            .foregroundStyle(Theme.muted(scheme))
-                    }
-                }
-                Section(L("Language")) {
-                    Picker(L("Language"), selection: Binding(
-                        get: { appLang },
-                        set: { appLang = $0; Lang.set($0) })) {
-                        Text(L("System default")).tag("system")
-                        Text("English").tag("en")
-                        Text("Українська").tag("uk")
-                        Text("Русский").tag("ru")
-                    }
-                    .pickerStyle(.menu)
-                }
-                Section(L("Appearance")) {
-                    Picker(L("Theme"), selection: $themeMode) {
-                        Text(L("Light")).tag("light")
-                        Text(L("Dark")).tag("dark")
-                    }
-                    .pickerStyle(.segmented)
-                    Toggle(L("Hide hints"), isOn: $hideHints)
-                }
-                if !ble.blocked.isEmpty {
-                    Section(L("Blocked")) {
-                        ForEach(Array(ble.blocked), id: \.self) { bid in
-                            HStack {
-                                Text(ble.names[bid] ?? L("Unknown"))
-                                    .font(.system(size: 15))
-                                    .foregroundStyle(Theme.text(scheme))
-                                Spacer()
-                                Button(L("Unblock")) { ble.unblock(bid) }
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundStyle(Theme.accent)
-                            }
-                        }
-                    }
-                }
-                Section(L("Privacy")) {
-                    if !hideHints {
-                        Text(L("Letychka has no account and no sign in. There is nothing to log out of: nothing about you is sent to any server. Your name, avatar and chats are stored only on this phone. Use the button below to wipe all of it."))
-                            .font(.system(size: 12))
-                            .foregroundStyle(Theme.muted(scheme))
-                    }
-                    Button(role: .destructive) {
-                        showClearConfirm = true
-                    } label: {
-                        Text(L("Clear everything on this phone"))
-                    }
-                }
-                if !hideHints {
-                    Section {
-                        Text(L("Letychka finds people near you over Bluetooth and lets you message them directly, with no internet and no servers. It stays anonymous and everything is kept only on your phone."))
-                            .font(.system(size: 13))
-                            .foregroundStyle(Theme.muted(scheme))
-                    }
-                }
-            }
-            .navigationTitle(L("Settings"))
-            .navigationBarTitleDisplayMode(.inline)
-            .alert(L("Clear everything?"), isPresented: $showClearConfirm) {
-                Button(L("Cancel"), role: .cancel) {}
-                Button(L("Clear"), role: .destructive) {
-                    ble.clearAll()
-                    AvatarStore.clear()
-                    avatar = nil
-                    avatarItem = nil
-                    nickField = "Anon"
-                }
-            } message: {
-                Text(L("Removes your name, avatar and all chats from this phone. This cannot be undone."))
-            }
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(L("Done")) { ble.setNick(nickField); showSettings = false }
-                }
-            }
-        }
-        .tint(Theme.accent)
-        // A sheet has its own presentation environment and does NOT inherit
-        // the root's preferredColorScheme, so apply it here too. Reactive to
-        // themeMode, so the picker switches the sheet live.
-        .preferredColorScheme(AppTheme.scheme(for: themeMode))
     }
 }

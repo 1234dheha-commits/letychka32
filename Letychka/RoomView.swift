@@ -134,6 +134,8 @@ struct RoomView: View {
             .padding(12)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear { ble.openRoom() }
+        .onDisappear { ble.closeRoom() }
     }
 
     private var emptyState: some View {

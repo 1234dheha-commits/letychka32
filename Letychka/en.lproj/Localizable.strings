@@ -98,5 +98,7 @@
 "%@ is nearby" = "%@ is nearby";
 "Send again" = "Send again";
 "Sending media %d%%" = "Sending media %d%%";
+"Profile" = "Profile";
+"Everyone in Bluetooth range" = "Everyone in Bluetooth range";
 "Notify about people nearby" = "Notify about people nearby";
 "A small notification when someone new appears in Bluetooth range. Off by default." = "A small notification when someone new appears in Bluetooth range. Off by default.";
