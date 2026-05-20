@@ -32,10 +32,9 @@ struct GlobalChatsView: View {
                     ScrollView {
                         LazyVStack(spacing: 0) {
                             ForEach(g.chats) { row in
-                                Button { openChatID = row.id } label: {
-                                    chatRow(row)
-                                }
-                                .buttonStyle(.plain)
+                                chatRow(row)
+                                    .contentShape(Rectangle())
+                                    .onTapGesture { openChatID = row.id }
                                 Divider()
                                     .overlay(Theme.line(scheme))
                                     .padding(.leading, 74)

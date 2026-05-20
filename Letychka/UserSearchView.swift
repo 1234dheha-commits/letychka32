@@ -79,8 +79,9 @@ struct UserSearchView: View {
         ScrollView {
             LazyVStack(spacing: 0) {
                 ForEach(results) { p in
-                    Button { onPick(p) } label: { row(p) }
-                        .buttonStyle(.plain)
+                    row(p)
+                        .contentShape(Rectangle())
+                        .onTapGesture { onPick(p) }
                     Divider().overlay(Theme.line(scheme))
                         .padding(.leading, 64)
                 }
