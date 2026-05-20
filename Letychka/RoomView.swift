@@ -1,8 +1,9 @@
 import SwiftUI
+import UIKit
 
 /// The shared "nearby room": one common chat for everyone in Bluetooth
 /// range. Text only, no servers, broadcast to every reachable phone.
-/// Supports replies, emoji reactions and @nick mentions.
+/// Supports replies, emoji reactions and @id mentions (rendered as @nick).
 struct RoomView: View {
     @ObservedObject var ble: BLEMessenger
     @AppStorage("hideHints") private var hideHints = false
@@ -19,12 +20,51 @@ struct RoomView: View {
         String(m.text.prefix(50))
     }
 
-    /// True when this message names me (@myNick), so it stands out.
+    /// True when this message tags me via @<myStableID>, so it stands out.
+    /// Unique per person (no false-positive collisions on the nick "Anon").
     private func mentionsMe(_ m: ChatMessage) -> Bool {
         guard !m.mine else { return false }
-        let n = ble.nick.trimmingCharacters(in: .whitespaces)
-        guard n.count >= 2, n != "Anon" else { return false }
-        return m.text.range(of: "@" + n, options: .caseInsensitive) != nil
+        return m.text.range(of: "@" + Ident.me,
+                            options: .caseInsensitive) != nil
+    }
+
+    /// Replace @<8-hex stable id> mentions with @<displayName> for the
+    /// bubble, color all @-tokens with the accent, and keep URLs tappable.
+    static func roomAttributed(text: String,
+                               names: [String: String]) -> AttributedString {
+        var work = text as NSString
+        if let re = try? NSRegularExpression(pattern: "@([0-9a-fA-F]{8})") {
+            let matches = re.matches(
+                in: work as String,
+                range: NSRange(location: 0, length: work.length))
+            for m in matches.reversed() {
+                let idRange = m.range(at: 1)
+                let id = work.substring(with: idRange).lowercased()
+                let display = "@" + (names[id] ?? L("Anon"))
+                work = work.replacingCharacters(in: m.range,
+                                                with: display) as NSString
+            }
+        }
+        let s = work as String
+        let ns = NSMutableAttributedString(string: s)
+        let full = NSRange(location: 0, length: (s as NSString).length)
+        if let det = try? NSDataDetector(
+            types: NSTextCheckingResult.CheckingType.link.rawValue) {
+            det.enumerateMatches(in: s, range: full) { m, _, _ in
+                if let m, let url = m.url {
+                    ns.addAttribute(.link, value: url, range: m.range)
+                }
+            }
+        }
+        if let re = try? NSRegularExpression(
+            pattern: "@[\\p{L}0-9_]{1,30}") {
+            for m in re.matches(in: s, range: full) {
+                ns.addAttribute(.foregroundColor,
+                                value: UIColor(Theme.accent),
+                                range: m.range)
+            }
+        }
+        return AttributedString(ns)
     }
 
     var body: some View {
@@ -123,7 +163,7 @@ struct RoomView: View {
         VStack(alignment: m.mine ? .trailing : .leading, spacing: 2) {
             if !m.mine {
                 Button {
-                    let tag = "@" + nickOf(m) + " "
+                    let tag = "@" + m.peerID + " "
                     if !draft.contains(tag) { draft += tag }
                 } label: {
                     Text(nickOf(m))
@@ -143,7 +183,7 @@ struct RoomView: View {
                 }
                 .padding(.horizontal, 6)
             }
-            Text(ChatView.linkified(m.text))
+            Text(Self.roomAttributed(text: m.text, names: ble.names))
                 .font(.system(size: 15))
                 .foregroundStyle(m.mine ? .white : Theme.text(scheme))
                 .tint(m.mine ? .white : Theme.accent)

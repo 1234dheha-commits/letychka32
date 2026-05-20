@@ -100,6 +100,8 @@ enum Wire {
 ///   ACK    12 : [4 wireID]               (this message actually arrived)
 ///   CHATCL 13 : (empty)                  (wipe our mutual chat on their side)
 ///   RREACT 14 : [4 msgID][utf8 emoji]    (react to a room message)
+///   KEYEX  15 : [32 X25519 public key]   (Curve25519 ephemeral key exchange)
+///   ENC    16 : [combined AES-GCM box]   (encrypted inner frame: 1 kind + body)
 enum Frame {
     static let TEXT:    UInt8 = 0x01
     static let HEAD:    UInt8 = 0x02
@@ -115,6 +117,8 @@ enum Frame {
     static let ACK:     UInt8 = 0x0C
     static let CHATCL:  UInt8 = 0x0D
     static let RREACT:  UInt8 = 0x0E
+    static let KEYEX:   UInt8 = 0x0F
+    static let ENC:     UInt8 = 0x10
 
     static let typeImage: UInt8 = 1
     static let typeAudio: UInt8 = 2
@@ -163,6 +167,8 @@ enum Frame {
         wrap(RREACT, u32(msgID) + Data(emoji.utf8))
     }
     static func chatClear() -> Data { wrap(CHATCL, Data()) }
+    static func keyEx(pub: Data) -> Data { wrap(KEYEX, pub) }
+    static func enc(payload: Data) -> Data { wrap(ENC, payload) }
     static func ack(wireID: UInt32) -> Data { wrap(ACK, u32(wireID)) }
     static func head(xfer: UInt32, total: Int, type: UInt8,
                      msgID: UInt32, nick: String) -> Data {

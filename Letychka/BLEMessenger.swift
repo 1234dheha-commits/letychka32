@@ -1,6 +1,7 @@
 import Foundation
 import CoreBluetooth
 import Combine
+import CryptoKit
 import UserNotifications
 
 /// Anonymous, server-less, internet-less messaging over Bluetooth LE.
@@ -553,6 +554,20 @@ final class BLEMessenger: NSObject, ObservableObject {
 
     private var sendQueues: [String: [Data]] = [:]   // peerID -> frames FIFO
     private var inflight: Set<String> = []            // central write outstanding
+
+    // Per-session ephemeral X25519 key. Both peers send their public key
+    // in a KEYEX frame; both derive the same AES-256-GCM session key.
+    // Protects 1:1 frames from passive Bluetooth sniffers. NOT a defence
+    // against an active "man in the middle" (no identity to verify here),
+    // so this is TOFU. Room messages stay plaintext (broadcast, no shared
+    // secret with strangers is possible).
+    private let myEphemeral = Curve25519.KeyAgreement.PrivateKey()
+    private var sessionKey: [String: SymmetricKey] = [:]
+    private var sentKeyEx: Set<String> = []
+    private var pendingPlain: [String: [Data]] = [:]   // wait for key, then encrypt
+    private static let stayPlain: Set<UInt8> = [
+        Frame.KEYEX, Frame.ENC, Frame.ROOM, Frame.RREACT, Frame.PROFILE
+    ]
     /// When a central write went out, so a lost didWriteValueFor callback
     /// (link half-died with no disconnect) cannot wedge the queue forever
     /// and leave messages stuck on "Sending..." though they arrived.
@@ -631,9 +646,58 @@ final class BLEMessenger: NSObject, ObservableObject {
     }
 
     private func enqueue(_ frames: [Data], to peerID: String) {
-        sendQueues[peerID, default: []].append(contentsOf: frames)
+        // Send our ephemeral public key once per peer, so they can derive
+        // the same AES-GCM session key.
+        if !sentKeyEx.contains(peerID) {
+            sentKeyEx.insert(peerID)
+            sendQueues[peerID, default: []].append(
+                Frame.keyEx(pub: myEphemeral.publicKey.rawRepresentation))
+        }
+        let key = sessionKey[peerID]
+        for f in frames {
+            let kind = f.first ?? 0
+            if Self.stayPlain.contains(kind) {
+                sendQueues[peerID, default: []].append(f)
+            } else if let k = key, let enc = encryptFrame(f, key: k) {
+                sendQueues[peerID, default: []].append(enc)
+            } else {
+                // Hold an encryptable frame until the session key arrives.
+                pendingPlain[peerID, default: []].append(f)
+            }
+        }
         if connected[peerID] == nil, let p = discovered[peerID] {
             central.connect(p, options: nil)
+        }
+        pump(peerID)
+    }
+
+    /// Wrap a frame in an ENC envelope. Inner plaintext is `[kind][body]`;
+    /// the outer ENC frame carries the sender id in its standard envelope.
+    private func encryptFrame(_ frame: Data, key: SymmetricKey) -> Data? {
+        guard frame.count >= Frame.header else { return nil }
+        let kind = frame[frame.startIndex]
+        let body = frame.dropFirst(Frame.header)
+        var inner = Data([kind])
+        inner.append(body)
+        do {
+            let sealed = try AES.GCM.seal(inner, using: key)
+            guard let combined = sealed.combined else { return nil }
+            return Frame.enc(payload: combined)
+        } catch {
+            return nil
+        }
+    }
+
+    /// Once a session key with `peerID` has been derived, encrypt and
+    /// flush any frames that were waiting in `pendingPlain`.
+    private func flushPendingAfterKey(_ peerID: String) {
+        guard let key = sessionKey[peerID],
+              let pend = pendingPlain[peerID], !pend.isEmpty else { return }
+        pendingPlain[peerID] = nil
+        for f in pend {
+            if let enc = encryptFrame(f, key: key) {
+                sendQueues[peerID, default: []].append(enc)
+            }
         }
         pump(peerID)
     }
@@ -877,6 +941,49 @@ final class BLEMessenger: NSObject, ObservableObject {
                     self.persist()
                 }
             }
+        case Frame.KEYEX:
+            // Derive a shared AES-GCM session key with this peer.
+            guard body.count >= 32 else { return }
+            let pub = Data(body.prefix(32))
+            guard let peerPub = try? Curve25519.KeyAgreement.PublicKey(
+                    rawRepresentation: pub),
+                  let shared = try? myEphemeral
+                    .sharedSecretFromKeyAgreement(with: peerPub) else { return }
+            let key = shared.hkdfDerivedSymmetricKey(
+                using: SHA256.self,
+                salt: Data("letychka.v1".utf8),
+                sharedInfo: Data(),
+                outputByteCount: 32)
+            DispatchQueue.main.async {
+                self.sessionKey[sid] = key
+                // If we have not sent our public key to them yet (e.g. we
+                // are the peripheral receiving first), do it now.
+                if !self.sentKeyEx.contains(sid) {
+                    self.sentKeyEx.insert(sid)
+                    self.sendQueues[sid, default: []].append(
+                        Frame.keyEx(
+                            pub: self.myEphemeral.publicKey.rawRepresentation))
+                }
+                self.flushPendingAfterKey(sid)
+                self.pump(sid)
+            }
+        case Frame.ENC:
+            // Unwrap and re-dispatch the encrypted inner frame.
+            guard let key = sessionKey[sid] else { return }
+            do {
+                let payload = Data(body)
+                let box = try AES.GCM.SealedBox(combined: payload)
+                let opened = try AES.GCM.open(box, using: key)
+                guard opened.count >= 1 else { return }
+                let innerKind = opened[opened.startIndex]
+                let innerBody = opened.dropFirst()
+                var full = Data([innerKind])
+                full.append(Data(sid.utf8))      // 8-byte sender id
+                full.append(innerBody)
+                handleFrame(full, fromCB: cbid)
+            } catch {
+                return
+            }
         default:
             return
         }
@@ -1025,6 +1132,11 @@ extension BLEMessenger: CBCentralManagerDelegate {
         outChar[id] = nil
         inflight.remove(id)
         inflightSince[id] = nil
+        // Drop the crypto session so the next reconnect does a fresh
+        // X25519 handshake. Pending plaintext frames stay queued and will
+        // be encrypted with the new key.
+        sessionKey[id] = nil
+        sentKeyEx.remove(id)
         // Queued frames are kept on purpose: they flush automatically if the
         // person comes back into range (didDiscoverCharacteristicsFor pumps).
     }
