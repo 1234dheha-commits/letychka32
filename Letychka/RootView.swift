@@ -201,7 +201,7 @@ struct RootView: View {
                     }
                     .pickerStyle(.menu)
                     if !hideHints {
-                        Text(L("Global mode is in progress: account, search and online groups are added step by step. Until then Bluetooth keeps working as before."))
+                        Text(L("Global mode is in early beta. Direct chats, search by username and groups work. Messages travel through Supabase (EU) and are not yet end-to-end encrypted, so the server operator could read them. Bluetooth mode stays fully offline and end-to-end encrypted as before."))
                             .font(.system(size: 12))
                             .foregroundStyle(Theme.muted(scheme))
                     }
