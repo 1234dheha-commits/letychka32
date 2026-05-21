@@ -17,9 +17,19 @@ final class Global: ObservableObject {
         let username: String
         let display_name: String?
         let avatar_url: String?
+        /// When the user was last active. nil = never (older row pre-migration)
+        /// or the user has hidden their presence.
+        let last_seen_at: Date?
+        /// User-controlled toggle: if false, we keep `last_seen_at` frozen and
+        /// the UI hides any "online / last seen" string.
+        let online_visible: Bool?
     }
 
     enum ChatKind: String, Codable { case direct, group }
+
+    /// Message payload kind. Stays as `text` for unmigrated DB rows so the
+    /// chat keeps working even before 0004 is applied.
+    enum MsgKind: String, Codable { case text, image, audio }
 
     struct Chat: Identifiable, Hashable, Decodable {
         let id: UUID
@@ -61,6 +71,33 @@ final class Global: ObservableObject {
         let body: String?
         let media_url: String?
         let created_at: Date
+        /// Defaults to `.text` when the DB column is missing (pre-migration)
+        /// or the server returns null for any reason.
+        let kind: MsgKind?
+        /// Audio length in ms (only set for `.audio`).
+        let duration_ms: Int?
+        /// Image dimensions (only set for `.image`).
+        let width: Int?
+        let height: Int?
+
+        /// Convenience: server value if present, otherwise inferred from
+        /// whether a media URL is attached. Keeps old rows rendering as text.
+        var effectiveKind: MsgKind {
+            if let kind { return kind }
+            if media_url?.isEmpty == false { return .image } // legacy default
+            return .text
+        }
+
+        /// Single-line summary for the chats-list row. Localized through the
+        /// L() helper so it follows the app language. Media messages get an
+        /// icon-like label instead of an empty string.
+        var preview: String {
+            switch effectiveKind {
+            case .text:  return body ?? ""
+            case .image: return "📷 " + L("Photo")
+            case .audio: return "🎤 " + L("Voice message")
+            }
+        }
     }
 
     // MARK: Observable state
@@ -72,8 +109,23 @@ final class Global: ObservableObject {
 
     private var pollTask: Task<Void, Never>?
     private var openChatID: UUID?
+    private var presenceTask: Task<Void, Never>?
 
     private init() {}
+
+    /// 60-second heartbeat that keeps our `last_seen_at` fresh while the app
+    /// is alive. Safe to call repeatedly: re-starting cancels the previous
+    /// loop. Server-side respects `online_visible` so a hidden user does not
+    /// get their timestamp updated.
+    func startPresenceHeartbeat() {
+        presenceTask?.cancel()
+        presenceTask = Task { [weak self] in
+            while !Task.isCancelled {
+                await self?.touchPresence()
+                try? await Task.sleep(nanoseconds: 60_000_000_000)
+            }
+        }
+    }
 
     // MARK: Public API
 
@@ -160,7 +212,7 @@ final class Global: ObservableObject {
         do {
             let rows: [Profile] = try await Supa.shared.client
                 .from("profiles")
-                .select("id,username,display_name,avatar_url")
+                .select("*")
                 .ilike("username", pattern: "\(q)%")
                 .limit(20)
                 .execute()
@@ -405,7 +457,7 @@ final class Global: ObservableObject {
         do {
             var q = Supa.shared.client
                 .from("messages")
-                .select("id,chat_id,sender_id,body,media_url,created_at")
+                .select("*")
                 .eq("chat_id", value: chatID)
             if let since {
                 let iso = ISO8601DateFormatter()
@@ -443,7 +495,7 @@ final class Global: ObservableObject {
             let rows: [Message] = try await Supa.shared.client
                 .from("messages")
                 .insert(NewMsg(chat_id: chatID, sender_id: myID, body: body))
-                .select("id,chat_id,sender_id,body,media_url,created_at")
+                .select("*")
                 .execute()
                 .value
             if let m = rows.first {
@@ -458,13 +510,162 @@ final class Global: ObservableObject {
         }
     }
 
+    /// Upload `data` to the `chat-media` bucket under the caller's own folder
+    /// and return the public URL. The bucket is public-read, so the URL can
+    /// be embedded directly in a `messages.media_url` row without signing.
+    /// Returns nil if anything goes wrong; callers fall back to leaving the
+    /// chat unchanged. The path scheme `<uid>/<uuid>.<ext>` matches the RLS
+    /// policy added in migration 0004.
+    private func uploadMedia(_ data: Data, ext: String,
+                             contentType: String) async -> String? {
+        guard let myID = me?.id else { return nil }
+        let path = "\(myID.uuidString.lowercased())/\(UUID().uuidString.lowercased()).\(ext)"
+        do {
+            _ = try await Supa.shared.client.storage
+                .from("chat-media")
+                .upload(
+                    path,
+                    data: data,
+                    options: FileOptions(
+                        cacheControl: "31536000",
+                        contentType: contentType,
+                        upsert: false
+                    )
+                )
+            let url = try Supa.shared.client.storage
+                .from("chat-media")
+                .getPublicURL(path: path)
+            return url.absoluteString
+        } catch {
+            print("Global.uploadMedia failed: \(error)")
+            return nil
+        }
+    }
+
+    /// Send an image message: uploads the JPEG bytes, then inserts a row
+    /// with kind=image and the public URL. `width` / `height` let the chat
+    /// view reserve the right aspect ratio before the image data finishes
+    /// loading from the URL.
+    func sendImage(_ jpeg: Data, width: Int, height: Int,
+                   to chatID: UUID) async {
+        guard let myID = me?.id else { return }
+        guard let url = await uploadMedia(jpeg, ext: "jpg",
+                                          contentType: "image/jpeg") else {
+            return
+        }
+        struct NewMsg: Encodable {
+            let chat_id: UUID
+            let sender_id: UUID
+            let kind: String
+            let media_url: String
+            let width: Int
+            let height: Int
+        }
+        do {
+            let rows: [Message] = try await Supa.shared.client
+                .from("messages")
+                .insert(NewMsg(chat_id: chatID, sender_id: myID,
+                               kind: "image", media_url: url,
+                               width: width, height: height))
+                .select("*")
+                .execute()
+                .value
+            if let m = rows.first {
+                var list = messages[chatID] ?? []
+                if !list.contains(where: { $0.id == m.id }) {
+                    list.append(m)
+                    messages[chatID] = list
+                }
+            }
+        } catch {
+            print("Global.sendImage failed: \(error)")
+        }
+    }
+
+    /// Send a voice message: uploads the m4a/aac bytes, then inserts a row
+    /// with kind=audio and the duration so receivers can show the length
+    /// without fetching the file first.
+    func sendAudio(_ m4a: Data, durationMs: Int, to chatID: UUID) async {
+        guard let myID = me?.id else { return }
+        guard let url = await uploadMedia(m4a, ext: "m4a",
+                                          contentType: "audio/m4a") else {
+            return
+        }
+        struct NewMsg: Encodable {
+            let chat_id: UUID
+            let sender_id: UUID
+            let kind: String
+            let media_url: String
+            let duration_ms: Int
+        }
+        do {
+            let rows: [Message] = try await Supa.shared.client
+                .from("messages")
+                .insert(NewMsg(chat_id: chatID, sender_id: myID,
+                               kind: "audio", media_url: url,
+                               duration_ms: durationMs))
+                .select("*")
+                .execute()
+                .value
+            if let m = rows.first {
+                var list = messages[chatID] ?? []
+                if !list.contains(where: { $0.id == m.id }) {
+                    list.append(m)
+                    messages[chatID] = list
+                }
+            }
+        } catch {
+            print("Global.sendAudio failed: \(error)")
+        }
+    }
+
+    // MARK: Presence
+
+    /// Push `now()` into our own `profiles.last_seen_at`. Server-side the
+    /// `touch_presence()` function refuses to update when the user has
+    /// `online_visible = false`, so calling this while hidden is a cheap
+    /// no-op. Use from a periodic heartbeat while the app is in foreground.
+    func touchPresence() async {
+        do {
+            _ = try await Supa.shared.client
+                .rpc("touch_presence")
+                .execute()
+        } catch {
+            // Pre-migration the function does not exist; silently ignore so
+            // chats keep working.
+            print("Global.touchPresence skipped: \(error)")
+        }
+    }
+
+    /// Flip the "hide my online" toggle. When set to false we also write
+    /// `last_seen_at = null` so peers immediately stop seeing our timestamp
+    /// instead of waiting for it to age out.
+    func setOnlineVisible(_ visible: Bool) async {
+        guard let myID = me?.id else { return }
+        struct UpdVis: Encodable {
+            let online_visible: Bool
+            let last_seen_at: Date?
+        }
+        do {
+            try await Supa.shared.client
+                .from("profiles")
+                .update(UpdVis(online_visible: visible,
+                               last_seen_at: visible ? Date() : nil))
+                .eq("id", value: myID)
+                .execute()
+            await refresh()
+        } catch {
+            print("Global.setOnlineVisible failed: \(error)")
+        }
+    }
+
     // MARK: Internals
 
     private func ensureMyProfile() async throws {
         guard let uid = Supa.shared.client.auth.currentUser?.id else { return }
         let rows: [Profile] = try await Supa.shared.client
             .from("profiles")
-            .select("id,username,display_name,avatar_url")
+            .select("*")
             .eq("id", value: uid)
             .limit(1)
             .execute()
@@ -510,7 +711,7 @@ final class Global: ObservableObject {
         let userIDs = Array(Set(memberships.map(\.user_id)))
         let profiles: [Profile] = try await Supa.shared.client
             .from("profiles")
-            .select("id,username,display_name,avatar_url")
+            .select("*")
             .in("id", values: userIDs)
             .execute()
             .value
@@ -518,7 +719,7 @@ final class Global: ObservableObject {
         // 5. last message per chat: pull recent batch, then collapse client-side
         let recent: [Message] = try await Supa.shared.client
             .from("messages")
-            .select("id,chat_id,sender_id,body,media_url,created_at")
+            .select("*")
             .in("chat_id", values: chatIDs)
             .order("created_at", ascending: false)
             .limit(chatIDs.count * 3)

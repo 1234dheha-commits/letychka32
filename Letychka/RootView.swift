@@ -13,6 +13,10 @@ struct RootView: View {
     @AppStorage("netMode") private var netMode = "ble"   // ble | global | both
     @AppStorage("hideTabLabels") private var hideTabLabels = false
     @AppStorage(Lang.key) private var appLang = "system"
+    /// Locally cached value of `profiles.online_visible`. Initialised from
+    /// the server in `.onAppear` of the settings tab and pushed back via
+    /// Global.setOnlineVisible when the user flips the toggle.
+    @AppStorage("globalOnlineVisible") private var globalOnlineVisible = true
     @Environment(\.colorScheme) private var scheme
     @State private var nickField = ""
     @State private var avatar: UIImage?
@@ -230,7 +234,7 @@ struct RootView: View {
         let title = other?.display_name?.isEmpty == false
             ? (other?.display_name ?? "")
             : (other?.username ?? row.chat.name ?? L("Group chat"))
-        let preview = row.lastMessage?.body ?? L("No messages yet")
+        let preview = row.lastMessage?.preview ?? L("No messages yet")
         let date = row.lastMessage?.created_at ?? row.chat.created_at
         HStack(spacing: 12) {
             ZStack(alignment: .bottomTrailing) {
@@ -402,6 +406,31 @@ struct RootView: View {
                         Text(L("A small notification when someone new appears in Bluetooth range. Off by default."))
                             .font(.system(size: 12))
                             .foregroundStyle(Theme.muted(scheme))
+                    }
+                }
+                if netMode != "ble" {
+                    Section(L("Online status")) {
+                        Toggle(L("Show my online status"), isOn: Binding(
+                            get: { globalOnlineVisible },
+                            set: { newVal in
+                                globalOnlineVisible = newVal
+                                Task { await global.setOnlineVisible(newVal) }
+                            }))
+                        if !hideHints {
+                            Text(L("When off, others see no \"online\" or \"last seen\" next to your name in global chats. You can still see theirs unless they have hidden it too."))
+                                .font(.system(size: 12))
+                                .foregroundStyle(Theme.muted(scheme))
+                        }
+                    }
+                    .onAppear {
+                        // Reflect the server value (set on another device or
+                        // by the migration default) into the local toggle.
+                        if let v = global.me?.online_visible {
+                            globalOnlineVisible = v
+                        }
+                    }
+                    .onChange(of: global.me?.online_visible) { _, new in
+                        if let v = new { globalOnlineVisible = v }
                     }
                 }
                 Section(L("Language")) {

@@ -66,6 +66,7 @@ final class Supa {
     @MainActor
     private func bootstrapGlobal() async {
         await Global.shared.refresh()
+        Global.shared.startPresenceHeartbeat()
     }
 
     @MainActor

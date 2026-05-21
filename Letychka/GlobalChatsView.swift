@@ -146,7 +146,7 @@ struct GlobalChatsView: View {
             ?? other?.username
             ?? row.chat.name
             ?? L("Group chat")
-        let preview = row.lastMessage?.body ?? ""
+        let preview = row.lastMessage?.preview ?? ""
         let date = row.lastMessage?.created_at ?? row.chat.created_at
         HStack(spacing: 12) {
             Circle().fill(Theme.accent.opacity(0.18))
