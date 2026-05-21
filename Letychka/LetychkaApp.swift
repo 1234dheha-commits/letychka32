@@ -14,10 +14,6 @@ final class AppDelegate: NSObject, UIApplicationDelegate,
         // Start Bluetooth at launch (incl. background relaunch by iOS for
         // state restoration) so messages can arrive and notify off-screen.
         BLEMessenger.shared.start()
-        // Phase B: also try to bring up an anonymous Supabase session so
-        // the user has a server identity. No UI is wired to this yet; on
-        // failure (offline, server down, anon disabled) BLE keeps working.
-        Supa.shared.start()
         return true
     }
     func userNotificationCenter(_ center: UNUserNotificationCenter,

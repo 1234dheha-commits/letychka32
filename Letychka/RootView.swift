@@ -1,22 +1,14 @@
 import SwiftUI
 import UIKit
 import PhotosUI
-import AuthenticationServices
-import CoreImage.CIFilterBuiltins
 
 struct RootView: View {
     @StateObject private var ble = BLEMessenger.shared
-    @ObservedObject private var global = Global.shared
     @AppStorage(AppTheme.key) private var themeMode = "dark"
     @AppStorage("hideHints") private var hideHints = false
     @AppStorage("nearbyNotify") private var nearbyNotify = false
-    @AppStorage("netMode") private var netMode = "ble"   // ble | global | both
     @AppStorage("hideTabLabels") private var hideTabLabels = false
     @AppStorage(Lang.key) private var appLang = "system"
-    /// Locally cached value of `profiles.online_visible`. Initialised from
-    /// the server in `.onAppear` of the settings tab and pushed back via
-    /// Global.setOnlineVisible when the user flips the toggle.
-    @AppStorage("globalOnlineVisible") private var globalOnlineVisible = true
     @Environment(\.colorScheme) private var scheme
     @State private var nickField = ""
     @State private var avatar: UIImage?
@@ -27,21 +19,6 @@ struct RootView: View {
     @State private var chatsPeer: Peer?
     @State private var showRoom = false
     @State private var showClearConfirm = false
-    @AppStorage("appleUserID") private var appleUserID = ""
-    @AppStorage("appleUserName") private var appleUserName = ""
-    @State private var signInError: String?
-    @State private var showDeleteAccountConfirm = false
-    @State private var globalNickField: String = ""
-    @State private var globalNickError: String?
-    @State private var globalNickSaving = false
-    /// nil = not yet checked / unchanged, true = free, false = taken
-    @State private var globalNickAvailable: Bool?
-    @State private var globalNickChecking = false
-    /// Chats tab: open a Global chat by id (push GlobalChatView).
-    @State private var globalChatID: UUID?
-    /// Search tab: same pattern, separated so the two tabs do not fight.
-    @State private var searchPendingChatID: UUID?
-    @State private var searchShowCreateGroup = false
 
     var body: some View {
         Group {
@@ -96,15 +73,8 @@ struct RootView: View {
             chatsTab
                 .tabItem { tabLabel(L("Chats"),
                                     icon: "bubble.left.and.bubble.right.fill") }
-                .badge(ble.unreadTotal + ble.roomUnread
-                       + global.chats.reduce(0) { $0 + $1.unread })
+                .badge(ble.unreadTotal + ble.roomUnread)
                 .tag(1)
-            if netMode != "ble" {
-                searchTab
-                    .tabItem { tabLabel(L("Search"),
-                                        icon: "magnifyingglass") }
-                    .tag(4)
-            }
             settingsTab
                 .tabItem { tabLabel(L("Settings"),
                                     icon: "gearshape.fill") }
@@ -157,27 +127,12 @@ struct RootView: View {
                 Theme.bg(scheme).ignoresSafeArea()
                 VStack(spacing: 0) {
                     roomRow
-                    if ble.conversations().isEmpty
-                        && (netMode == "ble" || global.chats.isEmpty) {
+                    if ble.conversations().isEmpty {
                         chatsEmptyState
                     } else {
                         ScrollView {
                             LazyVStack(spacing: 0) {
                                 ChatsListView(ble: ble) { chatsPeer = $0 }
-                                if netMode != "ble"
-                                    && !global.chats.isEmpty {
-                                    Divider().overlay(Theme.line(scheme))
-                                    ForEach(global.chats) { row in
-                                        globalRow(row)
-                                            .contentShape(Rectangle())
-                                            .onTapGesture {
-                                                globalChatID = row.chat.id
-                                            }
-                                        Divider()
-                                            .overlay(Theme.line(scheme))
-                                            .padding(.leading, 74)
-                                    }
-                                }
                             }
                         }
                     }
@@ -188,22 +143,14 @@ struct RootView: View {
             .navigationDestination(item: $chatsPeer) { p in
                 ChatView(ble: ble, peer: p)
             }
-            .navigationDestination(item: $globalChatID) { cid in
-                if let row = global.chats.first(where: { $0.chat.id == cid }) {
-                    GlobalChatView(row: row)
-                }
-            }
             .navigationDestination(isPresented: $showRoom) {
                 RoomView(ble: ble)
-            }
-            .task {
-                if netMode != "ble" { await pollGlobalChats() }
             }
         }
     }
 
-    /// Centred "No chats yet" block; sits in the chats tab when both BLE
-    /// and (optionally) Global lists are empty.
+    /// Centred "No chats yet" block; sits in the chats tab when the BLE
+    /// conversations list is empty.
     private var chatsEmptyState: some View {
         VStack(spacing: 10) {
             Spacer().frame(height: 80)
@@ -225,117 +172,6 @@ struct RootView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    @ViewBuilder
-    private func globalRow(_ row: Global.ChatRow) -> some View {
-        let myID = global.me?.id ?? UUID()
-        let other = row.otherParty(me: myID)
-        let title = other?.display_name?.isEmpty == false
-            ? (other?.display_name ?? "")
-            : (other?.username ?? row.chat.name ?? L("Group chat"))
-        let preview = row.lastMessage?.preview ?? L("No messages yet")
-        let date = row.lastMessage?.created_at ?? row.chat.created_at
-        HStack(spacing: 12) {
-            ZStack(alignment: .bottomTrailing) {
-                Circle().fill(Theme.accent.opacity(0.18))
-                    .frame(width: 46, height: 46)
-                    .overlay(
-                        Text(String(title.prefix(1)).uppercased())
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundStyle(Theme.accent)
-                    )
-                Image(systemName: "globe")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 16, height: 16)
-                    .background(Theme.accent, in: Circle())
-                    .overlay(Circle().stroke(Theme.bg(scheme), lineWidth: 1.5))
-                    .offset(x: 2, y: 2)
-            }
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 6) {
-                    Text(title)
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(Theme.text(scheme))
-                        .lineLimit(1)
-                    Spacer(minLength: 6)
-                    Text(Self.chatTimeFmt.string(from: date))
-                        .font(.system(size: 12))
-                        .foregroundStyle(Theme.muted(scheme))
-                }
-                Text(preview)
-                    .font(.system(size: 14))
-                    .foregroundStyle(Theme.muted(scheme))
-                    .lineLimit(1)
-            }
-            if row.unread > 0 {
-                Text("\(row.unread)")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(minWidth: 20, minHeight: 20)
-                    .padding(.horizontal, 5)
-                    .background(Theme.accent, in: Capsule())
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 11)
-    }
-
-    private static let chatTimeFmt: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "HH:mm"
-        return f
-    }()
-
-    /// 5-second polling loop for Global chats while the Chats tab is open.
-    private func pollGlobalChats() async {
-        await global.refresh()
-        while !Task.isCancelled {
-            try? await Task.sleep(nanoseconds: 5_000_000_000)
-            if Task.isCancelled { break }
-            await global.refresh()
-        }
-    }
-
-    /// The "Search" tab (renamed from Global). Full-screen UserSearchView
-    /// for finding people by @username or QR. A "+" toolbar menu adds a
-    /// shortcut for starting a group chat.
-    private var searchTab: some View {
-        NavigationStack {
-            UserSearchView(showCancel: false) { user in
-                Task {
-                    if let id = await global.openDirectChat(with: user) {
-                        searchPendingChatID = id
-                    }
-                }
-            }
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { searchShowCreateGroup = true } label: {
-                        Image(systemName: "person.3.fill")
-                    }
-                }
-            }
-            .navigationDestination(item: $searchPendingChatID) { cid in
-                if let row = global.chats.first(where: { $0.chat.id == cid }) {
-                    GlobalChatView(row: row)
-                }
-            }
-            .sheet(isPresented: $searchShowCreateGroup,
-                   onDismiss: openSearchPendingChat) {
-                NavigationStack {
-                    CreateGroupView { newID in
-                        searchPendingChatID = newID
-                        searchShowCreateGroup = false
-                    }
-                }
-            }
-        }
-    }
-
-    private func openSearchPendingChat() {
-        // sheet dismissed; navigation already triggered by pendingChatID set
     }
 
     private var roomRow: some View {
@@ -377,20 +213,6 @@ struct RootView: View {
     private var settingsTab: some View {
         NavigationStack {
             Form {
-                Section(L("Network mode")) {
-                    Picker(L("Network mode"), selection: $netMode) {
-                        Text(L("Bluetooth only")).tag("ble")
-                        Text(L("Global only")).tag("global")
-                        Text(L("Bluetooth and Global")).tag("both")
-                    }
-                    .pickerStyle(.menu)
-                    .labelsHidden()
-                    if !hideHints {
-                        Text(L("Global mode is in early beta. Direct chats, search by username and groups work. Messages travel through Supabase (EU) and are not yet end-to-end encrypted, so the server operator could read them. Bluetooth mode stays fully offline and end-to-end encrypted as before."))
-                            .font(.system(size: 12))
-                            .foregroundStyle(Theme.muted(scheme))
-                    }
-                }
                 Section(L("Nearby")) {
                     Toggle(L("Show me on the radar"), isOn: Binding(
                         get: { ble.visible },
@@ -406,31 +228,6 @@ struct RootView: View {
                         Text(L("A small notification when someone new appears in Bluetooth range. Off by default."))
                             .font(.system(size: 12))
                             .foregroundStyle(Theme.muted(scheme))
-                    }
-                }
-                if netMode != "ble" {
-                    Section(L("Online status")) {
-                        Toggle(L("Show my online status"), isOn: Binding(
-                            get: { globalOnlineVisible },
-                            set: { newVal in
-                                globalOnlineVisible = newVal
-                                Task { await global.setOnlineVisible(newVal) }
-                            }))
-                        if !hideHints {
-                            Text(L("When off, others see no \"online\" or \"last seen\" next to your name in global chats. You can still see theirs unless they have hidden it too."))
-                                .font(.system(size: 12))
-                                .foregroundStyle(Theme.muted(scheme))
-                        }
-                    }
-                    .onAppear {
-                        // Reflect the server value (set on another device or
-                        // by the migration default) into the local toggle.
-                        if let v = global.me?.online_visible {
-                            globalOnlineVisible = v
-                        }
-                    }
-                    .onChange(of: global.me?.online_visible) { _, new in
-                        if let v = new { globalOnlineVisible = v }
                     }
                 }
                 Section(L("Language")) {
@@ -517,106 +314,12 @@ struct RootView: View {
     private var profileTab: some View {
         NavigationStack {
             Form {
-                Section(L("Account")) {
-                    if !appleUserID.isEmpty {
-                        signedInBlock
-                    } else {
-                        signedOutBlock
-                    }
-                }
                 Section(L("Your name")) {
                     TextField(Ident.defaultNick, text: $nickField)
                         .onSubmit { ble.setNick(nickField) }
                     Text(joinedText)
                         .font(.system(size: 12))
                         .foregroundStyle(Theme.muted(scheme))
-                }
-                if netMode != "ble", let myName = global.me?.username,
-                   let qr = Self.qrImage(for: myName) {
-                    Section(L("Share code")) {
-                        HStack {
-                            Spacer()
-                            Image(uiImage: qr)
-                                .interpolation(.none)
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: 180, height: 180)
-                            Spacer()
-                        }
-                        if !hideHints {
-                            Text(L("Friends scan this with the Camera app to copy your username and find you."))
-                                .font(.system(size: 12))
-                                .foregroundStyle(Theme.muted(scheme))
-                        }
-                        Button {
-                            UIPasteboard.general.string = myName
-                        } label: {
-                            Label(L("Copy username"),
-                                  systemImage: "doc.on.doc")
-                        }
-                    }
-                }
-                if netMode != "ble" {
-                    Section(L("Your global username")) {
-                        HStack(spacing: 8) {
-                            TextField(Ident.defaultNick,
-                                      text: $globalNickField)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
-                                .submitLabel(.done)
-                                .onSubmit { saveGlobalNick() }
-                                .onChange(of: globalNickField) { _, _ in
-                                    Task { await checkNickAvailability() }
-                                }
-                            availabilityBadge
-                            if globalNickField != (global.me?.username ?? "")
-                                && !globalNickField.isEmpty
-                                && globalNickAvailable != false {
-                                if globalNickSaving {
-                                    ProgressView()
-                                } else {
-                                    Button(L("Save")) { saveGlobalNick() }
-                                        .font(.system(size: 14,
-                                                      weight: .semibold))
-                                        .foregroundStyle(Theme.accent)
-                                }
-                            }
-                            Button {
-                                UIPasteboard.general.string =
-                                    global.me?.username
-                                    ?? Ident.defaultNick
-                            } label: {
-                                Image(systemName: "doc.on.doc")
-                            }
-                            .buttonStyle(.borderless)
-                        }
-                        if let err = globalNickError {
-                            Text(err)
-                                .font(.system(size: 12))
-                                .foregroundStyle(.red)
-                        }
-                        if !hideHints {
-                            Text(L("Share this so others can find you in Global. Changing it works as long as the new name is not taken."))
-                                .font(.system(size: 12))
-                                .foregroundStyle(Theme.muted(scheme))
-                        }
-                    }
-                    .onAppear {
-                        // First time the section appears (or whenever the
-                        // server reveals a new username), prime the editor.
-                        if globalNickField.isEmpty,
-                           let u = global.me?.username { globalNickField = u }
-                    }
-                    .onChange(of: global.me?.username) { old, new in
-                        // Sync the field with the server only if the user
-                        // hasn't edited it (still matches the old value or
-                        // is empty). Otherwise leave their draft alone.
-                        guard let new else { return }
-                        if globalNickField.isEmpty
-                            || globalNickField == (old ?? "") {
-                            globalNickField = new
-                        }
-                    }
                 }
                 Section(L("Avatar")) {
                     HStack(spacing: 14) {
@@ -657,168 +360,7 @@ struct RootView: View {
         }
     }
 
-    @ViewBuilder
-    private var signedInBlock: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "checkmark.seal.fill")
-                .foregroundStyle(Theme.accent)
-                .font(.system(size: 20))
-            VStack(alignment: .leading, spacing: 2) {
-                Text(appleUserName.isEmpty
-                     ? L("Signed in with Apple")
-                     : L("Signed in as %@", appleUserName))
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Theme.text(scheme))
-                if !hideHints {
-                    Text(L("Optional. Nothing is stored on a server."))
-                        .font(.system(size: 11))
-                        .foregroundStyle(Theme.muted(scheme))
-                }
-            }
-            Spacer()
-        }
-        Button(role: .destructive) {
-            appleUserID = ""
-            appleUserName = ""
-        } label: {
-            Label(L("Sign out"),
-                  systemImage: "rectangle.portrait.and.arrow.right")
-        }
-        Button(role: .destructive) {
-            showDeleteAccountConfirm = true
-        } label: {
-            Label(L("Delete account"), systemImage: "trash.fill")
-        }
-        .confirmationDialog(
-            L("Delete account and all local data? This removes your Apple sign-in, your name, avatar and chats from this phone. It cannot be undone."),
-            isPresented: $showDeleteAccountConfirm,
-            titleVisibility: .visible
-        ) {
-            Button(L("Delete"), role: .destructive) {
-                appleUserID = ""
-                appleUserName = ""
-                ble.clearAll()
-                AvatarStore.clear()
-                avatar = nil
-                avatarItem = nil
-                nickField = Ident.defaultNick
-            }
-            Button(L("Cancel"), role: .cancel) {}
-        }
-    }
-
-    @ViewBuilder
-    private var signedOutBlock: some View {
-        if !hideHints {
-            Text(L("Sign in with Apple is optional. Letychka works fully without it and stays anonymous over Bluetooth. Signing in just lets you have an account you can delete."))
-                .font(.system(size: 12))
-                .foregroundStyle(Theme.muted(scheme))
-        }
-        SignInWithAppleButton(.signIn,
-            onRequest: { req in req.requestedScopes = [.fullName] },
-            onCompletion: { result in
-                switch result {
-                case .success(let auth):
-                    if let cred = auth.credential as? ASAuthorizationAppleIDCredential {
-                        appleUserID = cred.user
-                        if let fn = cred.fullName?.givenName, !fn.isEmpty {
-                            appleUserName = fn
-                        }
-                        // Phase E: also sign into Supabase using the Apple
-                        // identity token, so the account is tied to Apple
-                        // and survives reinstall on the same Apple ID.
-                        if let tokenData = cred.identityToken,
-                           let token = String(data: tokenData,
-                                              encoding: .utf8) {
-                            Task { await Supa.shared.signInWithApple(idToken: token) }
-                        }
-                    }
-                    signInError = nil
-                case .failure(let err):
-                    signInError = err.localizedDescription
-                }
-            })
-        .signInWithAppleButtonStyle(scheme == .dark ? .white : .black)
-        .frame(height: 44)
-        if let msg = signInError {
-            Text(msg).font(.system(size: 12)).foregroundStyle(.red)
-        }
-    }
-
     // MARK: Helpers
-
-    /// Tiny "✓ free" / "✗ taken" indicator next to the username editor.
-    /// Hidden while the field equals the current saved value (nothing to
-    /// check) or while a request is in flight.
-    @ViewBuilder
-    private var availabilityBadge: some View {
-        if globalNickField == (global.me?.username ?? "")
-            || globalNickField.isEmpty {
-            EmptyView()
-        } else if globalNickChecking {
-            ProgressView().scaleEffect(0.6)
-        } else if globalNickAvailable == true {
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(.green)
-        } else if globalNickAvailable == false {
-            Image(systemName: "xmark.circle.fill")
-                .foregroundStyle(.red)
-        }
-    }
-
-    /// Debounced check against the server: while the field equals the
-    /// current saved value, do nothing. Otherwise wait ~400ms, then ask
-    /// "is this name free?" The result is only kept if the field still
-    /// holds the same candidate (otherwise the user kept typing).
-    private func checkNickAvailability() async {
-        globalNickError = nil
-        let candidate = globalNickField
-        if candidate == (global.me?.username ?? "") || candidate.isEmpty {
-            globalNickAvailable = nil
-            globalNickChecking = false
-            return
-        }
-        globalNickChecking = true
-        try? await Task.sleep(nanoseconds: 400_000_000)
-        guard candidate == globalNickField else { return }
-        let free = await Global.shared.isUsernameAvailable(candidate)
-        await MainActor.run {
-            guard candidate == globalNickField else { return }
-            globalNickAvailable = free
-            globalNickChecking = false
-        }
-    }
-
-    /// Submit a username change to the server. The local @State is updated
-    /// optimistically on success and the error label is cleared. On error
-    /// we revert the field to the server value so the UI stays truthful.
-    private func saveGlobalNick() {
-        let candidate = globalNickField
-        guard candidate != (global.me?.username ?? "") else { return }
-        globalNickSaving = true
-        globalNickError = nil
-        Task {
-            let r = await Global.shared.renameMe(candidate)
-            await MainActor.run {
-                globalNickSaving = false
-                switch r {
-                case .ok:
-                    globalNickError = nil
-                case .empty:
-                    globalNickError = L("Name cannot be empty.")
-                    if let u = global.me?.username { globalNickField = u }
-                case .tooShort:
-                    globalNickError = L("Name is too short.")
-                case .tooLong:
-                    globalNickError = L("Name is too long.")
-                case .taken:
-                    globalNickError = L("That name is already in use.")
-                case .offline:
-                    globalNickError = L("Could not reach the server. Try again.")
-                }
-            }
-        }
-    }
 
     /// Consume a "tapped a notification" request: jump to that chat / Room.
     private func openPending() {
@@ -837,22 +379,6 @@ struct RootView: View {
                                  ?? Ident.defaultNick(for: pid),
                              rssi: -65, lastSeen: Date())
         }
-    }
-
-    /// QR code with the user's global username inside. Friends scan it
-    /// (Camera or any QR reader) and get the exact string to paste into
-    /// the search. Black-on-clear so it adapts to the chosen theme.
-    static func qrImage(for text: String) -> UIImage? {
-        let filter = CIFilter.qrCodeGenerator()
-        filter.message = Data(text.utf8)
-        filter.correctionLevel = "M"
-        guard let output = filter.outputImage else { return nil }
-        let scaled = output.transformed(by:
-            CGAffineTransform(scaleX: 12, y: 12))
-        let ctx = CIContext()
-        guard let cg = ctx.createCGImage(scaled, from: scaled.extent)
-        else { return nil }
-        return UIImage(cgImage: cg)
     }
 
     /// A very small avatar (~64px JPEG) to broadcast over Bluetooth.
