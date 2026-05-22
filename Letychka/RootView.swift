@@ -289,6 +289,48 @@ struct RootView: View {
                         Text(L("Clear everything on this phone"))
                     }
                 }
+                Section(L("Credits")) {
+                    Link(destination: URL(string:
+                        "https://t.me/figurels")!) {
+                        HStack {
+                            Image(systemName: "hammer.fill")
+                                .foregroundStyle(Theme.accent)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(L("Developer"))
+                                    .font(.system(size: 15,
+                                                  weight: .semibold))
+                                    .foregroundStyle(Theme.text(scheme))
+                                Text("t.me/figurels")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(Theme.muted(scheme))
+                            }
+                            Spacer()
+                            Image(systemName: "arrow.up.right")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(Theme.muted(scheme))
+                        }
+                    }
+                    Link(destination: URL(string:
+                        "https://www.instagram.com/oleksiirevunarts?igsh=MXVja3ZieDJoOTJrZg%3D%3D&utm_source=qr")!) {
+                        HStack {
+                            Image(systemName: "paintbrush.fill")
+                                .foregroundStyle(Theme.accent)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(L("Designer"))
+                                    .font(.system(size: 15,
+                                                  weight: .semibold))
+                                    .foregroundStyle(Theme.text(scheme))
+                                Text("instagram.com/oleksiirevunarts")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(Theme.muted(scheme))
+                            }
+                            Spacer()
+                            Image(systemName: "arrow.up.right")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(Theme.muted(scheme))
+                        }
+                    }
+                }
                 if !hideHints {
                     Section {
                         Text(L("Letychka finds people near you over Bluetooth and lets you message them directly, with no internet and no servers. It stays anonymous and everything is kept only on your phone."))

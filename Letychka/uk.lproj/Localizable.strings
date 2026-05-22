@@ -107,6 +107,9 @@
 "Global mode is in progress: account, search and online groups are added step by step. Until then Bluetooth keeps working as before." = "Глобальний режим у розробці: акаунт, пошук і онлайн-групи додаємо поетапно. Поки Bluetooth працює як раніше.";
 "Notify about people nearby" = "Сповіщати про людей поруч";
 "A small notification when someone new appears in Bluetooth range. Off by default." = "Невелике сповіщення, коли хтось новий з'являється в зоні Bluetooth. За замовчуванням вимкнено.";
+"Credits" = "Створили";
+"Developer" = "Розробник";
+"Designer" = "Дизайнер";
 "Global" = "Глобально";
 "Find people" = "Знайти людей";
 "New direct chat" = "Новий приватний чат";
