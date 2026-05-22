@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 import PhotosUI
+import AuthenticationServices
 
 struct RootView: View {
     @StateObject private var ble = BLEMessenger.shared
@@ -19,6 +20,10 @@ struct RootView: View {
     @State private var chatsPeer: Peer?
     @State private var showRoom = false
     @State private var showClearConfirm = false
+    @AppStorage("appleUserID") private var appleUserID = ""
+    @AppStorage("appleUserName") private var appleUserName = ""
+    @State private var signInError: String?
+    @State private var showDeleteAccountConfirm = false
 
     var body: some View {
         Group {
@@ -314,6 +319,13 @@ struct RootView: View {
     private var profileTab: some View {
         NavigationStack {
             Form {
+                Section(L("Account")) {
+                    if !appleUserID.isEmpty {
+                        signedInBlock
+                    } else {
+                        signedOutBlock
+                    }
+                }
                 Section(L("Your name")) {
                     TextField(Ident.defaultNick, text: $nickField)
                         .onSubmit { ble.setNick(nickField) }
@@ -357,6 +369,88 @@ struct RootView: View {
             }
             .navigationTitle(L("Profile"))
             .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+
+    @ViewBuilder
+    private var signedInBlock: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "checkmark.seal.fill")
+                .foregroundStyle(Theme.accent)
+                .font(.system(size: 20))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(appleUserName.isEmpty
+                     ? L("Signed in with Apple")
+                     : L("Signed in as %@", appleUserName))
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Theme.text(scheme))
+                if !hideHints {
+                    Text(L("Optional. Nothing is stored on a server."))
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.muted(scheme))
+                }
+            }
+            Spacer()
+        }
+        Button(role: .destructive) {
+            appleUserID = ""
+            appleUserName = ""
+        } label: {
+            Label(L("Sign out"),
+                  systemImage: "rectangle.portrait.and.arrow.right")
+        }
+        Button(role: .destructive) {
+            showDeleteAccountConfirm = true
+        } label: {
+            Label(L("Delete account"), systemImage: "trash.fill")
+        }
+        .confirmationDialog(
+            L("Delete account and all local data? This removes your Apple sign-in, your name, avatar and chats from this phone. It cannot be undone."),
+            isPresented: $showDeleteAccountConfirm,
+            titleVisibility: .visible
+        ) {
+            Button(L("Delete"), role: .destructive) {
+                appleUserID = ""
+                appleUserName = ""
+                ble.clearAll()
+                AvatarStore.clear()
+                avatar = nil
+                avatarItem = nil
+                nickField = Ident.defaultNick
+            }
+            Button(L("Cancel"), role: .cancel) {}
+        }
+    }
+
+    @ViewBuilder
+    private var signedOutBlock: some View {
+        if !hideHints {
+            Text(L("Sign in with Apple is optional. Letychka works fully without it and stays anonymous over Bluetooth. Signing in just lets you have an account you can delete."))
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.muted(scheme))
+        }
+        SignInWithAppleButton(.signIn,
+            onRequest: { req in req.requestedScopes = [.fullName] },
+            onCompletion: { result in
+                switch result {
+                case .success(let auth):
+                    if let cred = auth.credential
+                        as? ASAuthorizationAppleIDCredential {
+                        appleUserID = cred.user
+                        if let fn = cred.fullName?.givenName,
+                           !fn.isEmpty {
+                            appleUserName = fn
+                        }
+                    }
+                    signInError = nil
+                case .failure(let err):
+                    signInError = err.localizedDescription
+                }
+            })
+        .signInWithAppleButtonStyle(scheme == .dark ? .white : .black)
+        .frame(height: 44)
+        if let msg = signInError {
+            Text(msg).font(.system(size: 12)).foregroundStyle(.red)
         }
     }
 
