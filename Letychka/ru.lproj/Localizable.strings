@@ -110,6 +110,7 @@
 "Credits" = "Создатели";
 "Developer" = "Разработчик";
 "Designer" = "Дизайнер";
+"Turn AirDrop ON in Control Center. Letychka does not work without it." = "Включите AirDrop в Пункте управления. Без него Letychka не работает.";
 "Global" = "Глобально";
 "Find people" = "Найти людей";
 "New direct chat" = "Новый личный чат";

@@ -113,6 +113,7 @@ struct RootView: View {
                             .foregroundStyle(Theme.accent)
                             .padding(.top, 6)
                     }
+                    airDropBanner
                     RadarView(ble: ble) { radarPeer = $0 }
                         .padding(20)
                     if !hideHints { footer }
@@ -124,6 +125,30 @@ struct RootView: View {
                 ChatView(ble: ble, peer: p)
             }
         }
+    }
+
+    /// Persistent reminder at the top of the radar: AirDrop must be on.
+    /// Without it Apple's iOS BLE peer-to-peer stack does not advertise
+    /// reliably and people nearby cannot find each other.
+    private var airDropBanner: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.yellow)
+                .font(.system(size: 13, weight: .bold))
+            Text(L("Turn AirDrop ON in Control Center. Letychka does not work without it."))
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Theme.text(scheme))
+                .multilineTextAlignment(.leading)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(
+            Theme.accent.opacity(0.12),
+            in: RoundedRectangle(cornerRadius: 10)
+        )
+        .padding(.horizontal, 14)
+        .padding(.top, 6)
     }
 
     private var chatsTab: some View {
@@ -219,6 +244,15 @@ struct RootView: View {
         NavigationStack {
             Form {
                 Section(L("Nearby")) {
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName:
+                              "exclamationmark.triangle.fill")
+                            .foregroundStyle(.yellow)
+                        Text(L("Turn AirDrop ON in Control Center. Letychka does not work without it."))
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(Theme.text(scheme))
+                    }
+                    .padding(.vertical, 2)
                     Toggle(L("Show me on the radar"), isOn: Binding(
                         get: { ble.visible },
                         set: { ble.setVisible($0) }))
