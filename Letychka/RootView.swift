@@ -295,15 +295,9 @@ struct RootView: View {
                         HStack {
                             Image(systemName: "hammer.fill")
                                 .foregroundStyle(Theme.accent)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(L("Developer"))
-                                    .font(.system(size: 15,
-                                                  weight: .semibold))
-                                    .foregroundStyle(Theme.text(scheme))
-                                Text("t.me/figurels")
-                                    .font(.system(size: 12))
-                                    .foregroundStyle(Theme.muted(scheme))
-                            }
+                            Text(L("Developer"))
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(Theme.text(scheme))
                             Spacer()
                             Image(systemName: "arrow.up.right")
                                 .font(.system(size: 12, weight: .bold))
@@ -315,15 +309,9 @@ struct RootView: View {
                         HStack {
                             Image(systemName: "paintbrush.fill")
                                 .foregroundStyle(Theme.accent)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(L("Designer"))
-                                    .font(.system(size: 15,
-                                                  weight: .semibold))
-                                    .foregroundStyle(Theme.text(scheme))
-                                Text("instagram.com/oleksiirevunarts")
-                                    .font(.system(size: 12))
-                                    .foregroundStyle(Theme.muted(scheme))
-                            }
+                            Text(L("Designer"))
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(Theme.text(scheme))
                             Spacer()
                             Image(systemName: "arrow.up.right")
                                 .font(.system(size: 12, weight: .bold))
