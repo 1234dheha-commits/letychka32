@@ -134,6 +134,8 @@
 "Name is too long." = "Имя слишком длинное.";
 "Hide tab labels" = "Скрыть подписи табов";
 "Hides the small text under each tab icon so only the icons are shown." = "Прячет надписи под иконками внизу, остаются только сами иконки.";
+"Hides the small text under each tab icon so only the icons are shown. Restart the app for the change to apply." = "Прячет надписи под иконками внизу, остаются только сами иконки. Чтобы изменение применилось, перезапустите приложение.";
+"Show AirDrop reminder on Radar" = "Показывать напоминание про AirDrop на Радаре";
 "Share code" = "Код для друзей";
 "Friends scan this with the Camera app to copy your username and find you." = "Друг наводит Камеру на этот код, чтобы скопировать ваше имя и найти вас.";
 "Copy username" = "Скопировать имя";

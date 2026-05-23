@@ -9,6 +9,7 @@ struct RootView: View {
     @AppStorage("hideHints") private var hideHints = false
     @AppStorage("nearbyNotify") private var nearbyNotify = false
     @AppStorage("hideTabLabels") private var hideTabLabels = false
+    @AppStorage("airdropHintDismissed") private var airdropHintDismissed = false
     @AppStorage(Lang.key) private var appLang = "system"
     @Environment(\.colorScheme) private var scheme
     @State private var nickField = ""
@@ -113,7 +114,7 @@ struct RootView: View {
                             .foregroundStyle(Theme.accent)
                             .padding(.top, 6)
                     }
-                    if ble.peers.isEmpty { airDropBanner }
+                    if !airdropHintDismissed { airDropBanner }
                     RadarView(ble: ble) { radarPeer = $0 }
                         .padding(20)
                     if !hideHints { footer }
@@ -127,9 +128,10 @@ struct RootView: View {
         }
     }
 
-    /// Persistent reminder at the top of the radar: AirDrop must be on.
-    /// Without it Apple's iOS BLE peer-to-peer stack does not advertise
-    /// reliably and people nearby cannot find each other.
+    /// Reminder at the top of the radar: AirDrop must be on. iOS does
+    /// not expose AirDrop state to apps, so the banner cannot hide
+    /// itself automatically. A small "x" lets the user dismiss it once
+    /// they've confirmed AirDrop is on. Re-enable from Settings.
     private var airDropBanner: some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
@@ -139,7 +141,16 @@ struct RootView: View {
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(Theme.text(scheme))
                 .multilineTextAlignment(.leading)
-            Spacer(minLength: 0)
+            Spacer(minLength: 4)
+            Button {
+                airdropHintDismissed = true
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(Theme.muted(scheme))
+                    .padding(6)
+            }
+            .buttonStyle(.plain)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -253,6 +264,10 @@ struct RootView: View {
                             .foregroundStyle(Theme.text(scheme))
                     }
                     .padding(.vertical, 2)
+                    Toggle(L("Show AirDrop reminder on Radar"),
+                           isOn: Binding(
+                            get: { !airdropHintDismissed },
+                            set: { airdropHintDismissed = !$0 }))
                     Toggle(L("Show me on the radar"), isOn: Binding(
                         get: { ble.visible },
                         set: { ble.setVisible($0) }))
@@ -291,7 +306,7 @@ struct RootView: View {
                     Toggle(L("Hide hints"), isOn: $hideHints)
                     Toggle(L("Hide tab labels"), isOn: $hideTabLabels)
                     if !hideHints {
-                        Text(L("Hides the small text under each tab icon so only the icons are shown."))
+                        Text(L("Hides the small text under each tab icon so only the icons are shown. Restart the app for the change to apply."))
                             .font(.system(size: 12))
                             .foregroundStyle(Theme.muted(scheme))
                     }
