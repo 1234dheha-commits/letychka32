@@ -113,7 +113,7 @@ struct RootView: View {
                             .foregroundStyle(Theme.accent)
                             .padding(.top, 6)
                     }
-                    airDropBanner
+                    if ble.peers.isEmpty { airDropBanner }
                     RadarView(ble: ble) { radarPeer = $0 }
                         .padding(20)
                     if !hideHints { footer }
