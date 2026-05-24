@@ -566,16 +566,32 @@ final class BLEMessenger: NSObject, ObservableObject {
     /// AES-GCM overhead. Falls back to `Frame.chunkBytes` when unknown.
     private var maxChunk: [String: Int] = [:]
 
-    // Per-session ephemeral X25519 key. Both peers send their public key
-    // in a KEYEX frame; both derive the same AES-256-GCM session key.
-    // Protects 1:1 frames from passive Bluetooth sniffers. NOT a defence
-    // against an active "man in the middle" (no identity to verify here),
-    // so this is TOFU. Room messages stay plaintext (broadcast, no shared
-    // secret with strangers is possible).
-    private let myEphemeral = Curve25519.KeyAgreement.PrivateKey()
+    // Per-PEER ephemeral X25519 key. A fresh one is generated for
+    // every new BLE connection, so leaking one session never lets an
+    // attacker decrypt past or cross-pair traffic (forward + cross-
+    // pair secrecy). The session key is derived via X25519 ECDH +
+    // HKDF-SHA256 and used to wrap inner frames with AES-256-GCM.
+    //
+    // Each KEYEX also carries our persistent IDENTITY public key
+    // (`Crypto.identityPub`, from Keychain) so the safety-code UI
+    // can fingerprint the conversation Signal-style. The identity
+    // key is NOT used for encryption itself - active MITM is still
+    // possible during the initial handshake, but the safety code
+    // lets users notice it by out-of-band compare.
+    private var perPeerEphemeral: [String: Curve25519.KeyAgreement.PrivateKey] = [:]
     private var sessionKey: [String: SymmetricKey] = [:]
     private var sentKeyEx: Set<String> = []
     private var pendingPlain: [String: [Data]] = [:]   // wait for key, then encrypt
+    /// 64-bit monotonic counter encoded inside each AEAD payload.
+    /// Sender ++ on every ENC sent; receiver drops anything with
+    /// counter <= last seen, even if the AES-GCM tag verifies. Stops
+    /// an attacker from re-playing an old captured DEL/EDIT/REACT.
+    private var outCounter: [String: UInt64] = [:]
+    private var inCounter:  [String: UInt64] = [:]
+    /// Peer's identity public key learned from their KEYEX (only the
+    /// newer 64-byte format includes it). Used to render the safety
+    /// code in Chat info. nil ⇒ pre-v2 peer, marked "Unverified".
+    @Published var peerIdentity: [String: Data] = [:]
     private static let stayPlain: Set<UInt8> = [
         Frame.KEYEX, Frame.ENC, Frame.ROOM, Frame.RREACT, Frame.PROFILE
     ]
@@ -658,20 +674,35 @@ final class BLEMessenger: NSObject, ObservableObject {
         }
     }
 
+    /// Fresh ephemeral X25519 keypair per peer. Generated on first
+    /// access and reused only while the BLE link stays up; dropPeer
+    /// wipes it so the next handshake gets a brand-new key.
+    private func ephemeral(for peerID: String)
+        -> Curve25519.KeyAgreement.PrivateKey {
+        if let k = perPeerEphemeral[peerID] { return k }
+        let k = Curve25519.KeyAgreement.PrivateKey()
+        perPeerEphemeral[peerID] = k
+        return k
+    }
+
     private func enqueue(_ frames: [Data], to peerID: String) {
-        // Send our ephemeral public key once per peer, so they can derive
-        // the same AES-GCM session key.
+        // Send our ephemeral public key + persistent identity public
+        // key once per peer, so they can derive the same AES-GCM
+        // session key AND fingerprint us for the safety code.
         if !sentKeyEx.contains(peerID) {
             sentKeyEx.insert(peerID)
+            var payload = ephemeral(for: peerID).publicKey.rawRepresentation
+            payload.append(Crypto.identityPub)
             sendQueues[peerID, default: []].append(
-                Frame.keyEx(pub: myEphemeral.publicKey.rawRepresentation))
+                Frame.keyEx(pub: payload))
         }
         let key = sessionKey[peerID]
         for f in frames {
             let kind = f.first ?? 0
             if Self.stayPlain.contains(kind) {
                 sendQueues[peerID, default: []].append(f)
-            } else if let k = key, let enc = encryptFrame(f, key: k) {
+            } else if let k = key,
+                      let enc = encryptFrame(f, key: k, peer: peerID) {
                 sendQueues[peerID, default: []].append(enc)
             } else {
                 // Hold an encryptable frame until the session key arrives.
@@ -684,13 +715,20 @@ final class BLEMessenger: NSObject, ObservableObject {
         pump(peerID)
     }
 
-    /// Wrap a frame in an ENC envelope. Inner plaintext is `[kind][body]`;
-    /// the outer ENC frame carries the sender id in its standard envelope.
-    private func encryptFrame(_ frame: Data, key: SymmetricKey) -> Data? {
+    /// Wrap a frame in an ENC envelope. Inner plaintext is now
+    /// `[8 ctr][1 kind][body]`; the outer ENC frame carries the
+    /// sender id in its standard envelope. The 8-byte counter is a
+    /// per-peer monotonic uint64 included INSIDE the AES-GCM seal so
+    /// the receiver can drop replays even when the AEAD tag is
+    /// valid.
+    private func encryptFrame(_ frame: Data, key: SymmetricKey,
+                              peer peerID: String) -> Data? {
         guard frame.count >= Frame.header else { return nil }
         let kind = frame[frame.startIndex]
         let body = frame.dropFirst(Frame.header)
-        var inner = Data([kind])
+        outCounter[peerID, default: 0] += 1
+        var inner = Crypto.counterBytes(outCounter[peerID]!)
+        inner.append(kind)
         inner.append(body)
         do {
             let sealed = try AES.GCM.seal(inner, using: key)
@@ -708,7 +746,7 @@ final class BLEMessenger: NSObject, ObservableObject {
               let pend = pendingPlain[peerID], !pend.isEmpty else { return }
         pendingPlain[peerID] = nil
         for f in pend {
-            if let enc = encryptFrame(f, key: key) {
+            if let enc = encryptFrame(f, key: key, peer: peerID) {
                 sendQueues[peerID, default: []].append(enc)
             }
         }
@@ -955,12 +993,18 @@ final class BLEMessenger: NSObject, ObservableObject {
                 }
             }
         case Frame.KEYEX:
-            // Derive a shared AES-GCM session key with this peer.
+            // Two wire formats accepted:
+            //   v1 (legacy, 32 B): just ephemeral pub.
+            //   v2 (64 B): ephemeral pub || identity pub.
+            // Identity pub is only used for the safety-code UI; the
+            // session key still comes from ECDH of the ephemerals.
             guard body.count >= 32 else { return }
-            let pub = Data(body.prefix(32))
+            let ephemPub = Data(body.prefix(32))
+            let identPub: Data? = body.count >= 64
+                ? Data(body.dropFirst(32).prefix(32)) : nil
             guard let peerPub = try? Curve25519.KeyAgreement.PublicKey(
-                    rawRepresentation: pub),
-                  let shared = try? myEphemeral
+                    rawRepresentation: ephemPub),
+                  let shared = try? ephemeral(for: sid)
                     .sharedSecretFromKeyAgreement(with: peerPub) else { return }
             let key = shared.hkdfDerivedSymmetricKey(
                 using: SHA256.self,
@@ -969,27 +1013,39 @@ final class BLEMessenger: NSObject, ObservableObject {
                 outputByteCount: 32)
             DispatchQueue.main.async {
                 self.sessionKey[sid] = key
-                // If we have not sent our public key to them yet (e.g. we
-                // are the peripheral receiving first), do it now.
+                if let ip = identPub { self.peerIdentity[sid] = ip }
+                // Reset per-peer counters so a new handshake starts
+                // from 1 and an old replay window doesn't leak in.
+                self.outCounter[sid] = 0
+                self.inCounter[sid] = 0
                 if !self.sentKeyEx.contains(sid) {
                     self.sentKeyEx.insert(sid)
+                    var pl = self.ephemeral(for: sid)
+                        .publicKey.rawRepresentation
+                    pl.append(Crypto.identityPub)
                     self.sendQueues[sid, default: []].append(
-                        Frame.keyEx(
-                            pub: self.myEphemeral.publicKey.rawRepresentation))
+                        Frame.keyEx(pub: pl))
                 }
                 self.flushPendingAfterKey(sid)
                 self.pump(sid)
             }
         case Frame.ENC:
-            // Unwrap and re-dispatch the encrypted inner frame.
+            // Unwrap and re-dispatch the encrypted inner frame. The
+            // first 8 bytes inside the AEAD payload are a monotonic
+            // counter; anything <= last seen is dropped to defeat
+            // captured-frame replay.
             guard let key = sessionKey[sid] else { return }
             do {
                 let payload = Data(body)
                 let box = try AES.GCM.SealedBox(combined: payload)
                 let opened = try AES.GCM.open(box, using: key)
-                guard opened.count >= 1 else { return }
-                let innerKind = opened[opened.startIndex]
-                let innerBody = opened.dropFirst()
+                guard opened.count >= 9,
+                      let ctr = Crypto.readCounter(opened) else { return }
+                let last = inCounter[sid] ?? 0
+                guard ctr > last else { return }   // replay
+                inCounter[sid] = ctr
+                let innerKind = opened[opened.startIndex + 8]
+                let innerBody = opened.dropFirst(9)
                 var full = Data([innerKind])
                 full.append(Data(sid.utf8))      // 8-byte sender id
                 full.append(innerBody)
@@ -1149,10 +1205,15 @@ extension BLEMessenger: CBCentralManagerDelegate {
         inflight.remove(id)
         inflightSince[id] = nil
         // Drop the crypto session so the next reconnect does a fresh
-        // X25519 handshake. Pending plaintext frames stay queued and will
-        // be encrypted with the new key.
+        // X25519 handshake with a fresh per-peer ephemeral. Pending
+        // plaintext frames stay queued and will be encrypted with the
+        // new key. Replay counters reset on the next KEYEX so an
+        // out-of-window inbound frame can't get accepted.
         sessionKey[id] = nil
         sentKeyEx.remove(id)
+        perPeerEphemeral[id] = nil
+        outCounter[id] = nil
+        inCounter[id] = nil
         // Queued frames are kept on purpose: they flush automatically if the
         // person comes back into range (didDiscoverCharacteristicsFor pumps).
     }

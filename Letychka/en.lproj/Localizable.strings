@@ -111,6 +111,15 @@
 "Developer" = "Developer";
 "Designer" = "Designer";
 "Turn AirDrop ON in Control Center. Letychka does not work without it." = "Turn AirDrop ON in Control Center. Letychka does not work without it.";
+"Chat info" = "Chat info";
+"Safety code" = "Safety code";
+"How it works" = "How it works";
+"Compare this code out loud or over a different channel. If the other person sees the same 12 characters, your chat has no man in the middle. A different code means someone might be relaying the conversation." = "Compare this code out loud or over a different channel. If the other person sees the same 12 characters, your chat has no man in the middle. A different code means someone might be relaying the conversation.";
+"Waiting for the other phone to share its identity key… reopen the chat once you see them on the radar." = "Waiting for the other phone to share its identity key… reopen the chat once you see them on the radar.";
+"Every message is end-to-end encrypted with AES-256-GCM. Keys are derived per BLE connection from a fresh X25519 handshake." = "Every message is end-to-end encrypted with AES-256-GCM. Keys are derived per BLE connection from a fresh X25519 handshake.";
+"A monotonic counter inside every encrypted frame stops captured messages from being replayed at you." = "A monotonic counter inside every encrypted frame stops captured messages from being replayed at you.";
+"Your identity key is a persistent X25519 keypair stored in the iOS Keychain on this phone only. It never leaves the device." = "Your identity key is a persistent X25519 keypair stored in the iOS Keychain on this phone only. It never leaves the device.";
+"Group room messages are broadcast in plaintext over Bluetooth - by design, everyone nearby has to be able to read them." = "Group room messages are broadcast in plaintext over Bluetooth - by design, everyone nearby has to be able to read them.";
 "Global" = "Global";
 "Find people" = "Find people";
 "New direct chat" = "New direct chat";

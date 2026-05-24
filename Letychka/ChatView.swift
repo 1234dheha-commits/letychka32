@@ -126,6 +126,12 @@ struct ChatView: View {
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
+                    NavigationLink {
+                        ChatInfoView(ble: ble, peer: peer)
+                    } label: {
+                        Label(L("Chat info"),
+                              systemImage: "checkmark.shield")
+                    }
                     Button {
                         ble.toggleMute(peer.id)
                     } label: {

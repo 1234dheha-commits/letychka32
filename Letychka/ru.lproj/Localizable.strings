@@ -111,6 +111,15 @@
 "Developer" = "Разработчик";
 "Designer" = "Дизайнер";
 "Turn AirDrop ON in Control Center. Letychka does not work without it." = "Включите AirDrop в Пункте управления. Без него Letychka не работает.";
+"Chat info" = "О чате";
+"Safety code" = "Код безопасности";
+"How it works" = "Как это работает";
+"Compare this code out loud or over a different channel. If the other person sees the same 12 characters, your chat has no man in the middle. A different code means someone might be relaying the conversation." = "Сравните этот код голосом или через другой канал. Если у собеседника те же 12 символов, в вашем чате нет посредника. Если коды разные, кто-то может перехватывать разговор.";
+"Waiting for the other phone to share its identity key… reopen the chat once you see them on the radar." = "Ждём, пока другой телефон поделится своим ключом… откройте чат заново, когда увидите человека на радаре.";
+"Every message is end-to-end encrypted with AES-256-GCM. Keys are derived per BLE connection from a fresh X25519 handshake." = "Каждое сообщение шифруется сквозным AES-256-GCM. Ключ выводится на каждое BLE-подключение из свежего X25519-обмена.";
+"A monotonic counter inside every encrypted frame stops captured messages from being replayed at you." = "Монотонный счётчик внутри каждого зашифрованного кадра не даёт перехваченным сообщениям проиграться вам повторно.";
+"Your identity key is a persistent X25519 keypair stored in the iOS Keychain on this phone only. It never leaves the device." = "Ваш ключ-идентификатор это постоянная пара X25519, хранится в iOS-Keychain только на этом телефоне. С устройства не уходит.";
+"Group room messages are broadcast in plaintext over Bluetooth - by design, everyone nearby has to be able to read them." = "Сообщения в общей комнате передаются по Bluetooth открытым текстом, так задумано: их должны видеть все рядом.";
 "Global" = "Глобально";
 "Find people" = "Найти людей";
 "New direct chat" = "Новый личный чат";
