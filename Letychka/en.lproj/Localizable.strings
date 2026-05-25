@@ -120,6 +120,8 @@
 "A monotonic counter inside every encrypted frame stops captured messages from being replayed at you." = "A monotonic counter inside every encrypted frame stops captured messages from being replayed at you.";
 "Your identity key is a persistent X25519 keypair stored in the iOS Keychain on this phone only. It never leaves the device." = "Your identity key is a persistent X25519 keypair stored in the iOS Keychain on this phone only. It never leaves the device.";
 "Group room messages are broadcast in plaintext over Bluetooth - by design, everyone nearby has to be able to read them." = "Group room messages are broadcast in plaintext over Bluetooth - by design, everyone nearby has to be able to read them.";
+"Verified handshake" = "Verified handshake";
+"Unverified handshake (old build?)" = "Unverified handshake (old build?)";
 "Global" = "Global";
 "Find people" = "Find people";
 "New direct chat" = "New direct chat";

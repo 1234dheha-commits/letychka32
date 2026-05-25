@@ -9,12 +9,29 @@ struct ChatInfoView: View {
     @Environment(\.colorScheme) private var scheme
     let peer: Peer
 
+    private var verified: Bool {
+        ble.peerVerified[peer.id] ?? false
+    }
+
     var body: some View {
         ZStack {
             Theme.bg(scheme).ignoresSafeArea()
             Form {
                 Section(L("Safety code")) {
                     if let theirID = ble.peerIdentity[peer.id] {
+                        HStack(spacing: 6) {
+                            Image(systemName: verified
+                                  ? "checkmark.seal.fill"
+                                  : "exclamationmark.triangle.fill")
+                                .foregroundStyle(verified
+                                                 ? Theme.accent : .yellow)
+                            Text(verified
+                                 ? L("Verified handshake")
+                                 : L("Unverified handshake (old build?)"))
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(verified
+                                                 ? Theme.accent : .yellow)
+                        }
                         Text(Crypto.safetyCode(
                             myID: Crypto.identityPub,
                             theirID: theirID))

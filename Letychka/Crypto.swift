@@ -12,26 +12,48 @@ enum Crypto {
 
     // MARK: identity key
 
-    private static let kcService = "recode.letychka32.identityKey"
-    private static let kcAccount = "v1"
+    // v2 = Ed25519 (signing). The old v1 X25519 key in Keychain
+    // (kSecAttrService "recode.letychka32.identityKey") is now dead
+    // weight; it stays until the user runs Settings > Clear.
+    // Loaded under a NEW service name so we don't accidentally read
+    // X25519 bytes as Ed25519 (same 32-byte raw length).
+    private static let kcService = "recode.letychka32.identityKey.v2"
+    private static let kcAccount = "ed25519"
 
-    /// Long-lived X25519 keypair, generated once and kept in Keychain.
-    /// Used ONLY for identity binding (safety code, future signatures).
-    /// All actual session encryption still uses per-connection
-    /// ephemeral keys, so leaking this key never decrypts past
-    /// traffic.
-    static let identityKey: Curve25519.KeyAgreement.PrivateKey = {
+    /// Long-lived Ed25519 signing keypair, generated once and kept
+    /// in Keychain. Used for: (1) Signal-style safety code shown to
+    /// the user; (2) signing each fresh per-peer X25519 ephemeral
+    /// inside the KEYEX so an active MITM cannot swap it without us
+    /// noticing. Leaking it lets an attacker impersonate us in
+    /// future handshakes; it cannot decrypt past traffic (real
+    /// session keys are per-link ephemerals).
+    static let identityKey: Curve25519.Signing.PrivateKey = {
         if let raw = readKeychain(),
-           let key = try? Curve25519.KeyAgreement.PrivateKey(
+           let key = try? Curve25519.Signing.PrivateKey(
                rawRepresentation: raw) {
             return key
         }
-        let key = Curve25519.KeyAgreement.PrivateKey()
+        let key = Curve25519.Signing.PrivateKey()
         writeKeychain(key.rawRepresentation)
         return key
     }()
 
     static var identityPub: Data { identityKey.publicKey.rawRepresentation }
+
+    /// Sign arbitrary bytes with our identity key. Returns 64 bytes
+    /// (Ed25519 signature size) or nil on the very unlikely error.
+    static func sign(_ data: Data) -> Data? {
+        try? identityKey.signature(for: data)
+    }
+
+    /// Verify a 64-byte Ed25519 signature using a peer's identity
+    /// public key (32 bytes).
+    static func verify(_ signature: Data, of data: Data,
+                       with peerIdentityPub: Data) -> Bool {
+        guard let pub = try? Curve25519.Signing.PublicKey(
+                rawRepresentation: peerIdentityPub) else { return false }
+        return pub.isValidSignature(signature, for: data)
+    }
 
     private static func readKeychain() -> Data? {
         var q: [String: Any] = [

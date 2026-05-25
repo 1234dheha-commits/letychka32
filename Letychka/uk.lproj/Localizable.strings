@@ -120,6 +120,8 @@
 "A monotonic counter inside every encrypted frame stops captured messages from being replayed at you." = "Монотонний лічильник усередині кожного зашифрованого кадру не дає перехопленим повідомленням програтися повторно.";
 "Your identity key is a persistent X25519 keypair stored in the iOS Keychain on this phone only. It never leaves the device." = "Ваш ключ-ідентифікатор це постійна пара X25519, зберігається в iOS Keychain лише на цьому телефоні. З пристрою не виходить.";
 "Group room messages are broadcast in plaintext over Bluetooth - by design, everyone nearby has to be able to read them." = "Повідомлення в загальній кімнаті йдуть по Bluetooth відкритим текстом, так задумано: їх мають бачити всі поруч.";
+"Verified handshake" = "Рукостискання перевірено";
+"Unverified handshake (old build?)" = "Рукостискання без перевірки (стара збірка?)";
 "Global" = "Глобально";
 "Find people" = "Знайти людей";
 "New direct chat" = "Новий приватний чат";

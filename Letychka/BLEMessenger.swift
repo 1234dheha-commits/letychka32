@@ -592,6 +592,11 @@ final class BLEMessenger: NSObject, ObservableObject {
     /// newer 64-byte format includes it). Used to render the safety
     /// code in Chat info. nil ⇒ pre-v2 peer, marked "Unverified".
     @Published var peerIdentity: [String: Data] = [:]
+    /// True only when the peer sent a v3 KEYEX (128 bytes) AND their
+    /// Ed25519 signature over their ephemeral pub verified against
+    /// the identity key they sent. This is what defeats active MITM
+    /// during the handshake.
+    @Published var peerVerified: [String: Bool] = [:]
     private static let stayPlain: Set<UInt8> = [
         Frame.KEYEX, Frame.ENC, Frame.ROOM, Frame.RREACT, Frame.PROFILE
     ]
@@ -686,13 +691,22 @@ final class BLEMessenger: NSObject, ObservableObject {
     }
 
     private func enqueue(_ frames: [Data], to peerID: String) {
-        // Send our ephemeral public key + persistent identity public
-        // key once per peer, so they can derive the same AES-GCM
-        // session key AND fingerprint us for the safety code.
+        // KEYEX v3 wire layout (sent on first frame to a peer):
+        //   [32 ephemeral X25519 pub]
+        //   [32 identity Ed25519 pub]
+        //   [64 Ed25519 signature over the ephemeral pub bytes]
+        // An attacker who substitutes their own ephemeral pub cannot
+        // produce a matching signature without our identity priv key,
+        // so the receiver detects the MITM and marks the channel
+        // unverified. Older 32-byte / 64-byte peers still get a
+        // handshake; they just lose the verification.
         if !sentKeyEx.contains(peerID) {
             sentKeyEx.insert(peerID)
-            var payload = ephemeral(for: peerID).publicKey.rawRepresentation
+            let ephemPub = ephemeral(for: peerID)
+                .publicKey.rawRepresentation
+            var payload = ephemPub
             payload.append(Crypto.identityPub)
+            if let sig = Crypto.sign(ephemPub) { payload.append(sig) }
             sendQueues[peerID, default: []].append(
                 Frame.keyEx(pub: payload))
         }
@@ -993,15 +1007,26 @@ final class BLEMessenger: NSObject, ObservableObject {
                 }
             }
         case Frame.KEYEX:
-            // Two wire formats accepted:
-            //   v1 (legacy, 32 B): just ephemeral pub.
-            //   v2 (64 B): ephemeral pub || identity pub.
-            // Identity pub is only used for the safety-code UI; the
-            // session key still comes from ECDH of the ephemerals.
+            // Three accepted wire formats:
+            //   v1 (32 B):  ephemeral pub only.  unverified.
+            //   v2 (64 B):  ephemeral pub || identity pub.  unverified
+            //               (identity is X25519, can't sign).
+            //   v3 (128 B): ephemeral pub || identity pub (Ed25519)
+            //               || Ed25519 signature over ephemeral pub.
+            //               If signature verifies, mark VERIFIED;
+            //               only then is the safety code meaningful.
             guard body.count >= 32 else { return }
             let ephemPub = Data(body.prefix(32))
             let identPub: Data? = body.count >= 64
                 ? Data(body.dropFirst(32).prefix(32)) : nil
+            let signature: Data? = body.count >= 128
+                ? Data(body.dropFirst(64).prefix(64)) : nil
+            let verified: Bool = {
+                guard let ip = identPub, let sg = signature else {
+                    return false
+                }
+                return Crypto.verify(sg, of: ephemPub, with: ip)
+            }()
             guard let peerPub = try? Curve25519.KeyAgreement.PublicKey(
                     rawRepresentation: ephemPub),
                   let shared = try? ephemeral(for: sid)
@@ -1014,15 +1039,18 @@ final class BLEMessenger: NSObject, ObservableObject {
             DispatchQueue.main.async {
                 self.sessionKey[sid] = key
                 if let ip = identPub { self.peerIdentity[sid] = ip }
+                self.peerVerified[sid] = verified
                 // Reset per-peer counters so a new handshake starts
                 // from 1 and an old replay window doesn't leak in.
                 self.outCounter[sid] = 0
                 self.inCounter[sid] = 0
                 if !self.sentKeyEx.contains(sid) {
                     self.sentKeyEx.insert(sid)
-                    var pl = self.ephemeral(for: sid)
+                    let mp = self.ephemeral(for: sid)
                         .publicKey.rawRepresentation
+                    var pl = mp
                     pl.append(Crypto.identityPub)
+                    if let sg = Crypto.sign(mp) { pl.append(sg) }
                     self.sendQueues[sid, default: []].append(
                         Frame.keyEx(pub: pl))
                 }
@@ -1214,6 +1242,7 @@ extension BLEMessenger: CBCentralManagerDelegate {
         perPeerEphemeral[id] = nil
         outCounter[id] = nil
         inCounter[id] = nil
+        peerVerified[id] = nil
         // Queued frames are kept on purpose: they flush automatically if the
         // person comes back into range (didDiscoverCharacteristicsFor pumps).
     }
