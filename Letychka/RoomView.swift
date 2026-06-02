@@ -18,7 +18,7 @@ struct RoomView: View {
     }
 
     private func snippet(_ m: ChatMessage) -> String {
-        String(m.text.prefix(50))
+        String(Moderation.clean(m.text).prefix(50))
     }
 
     /// True when this message tags me via @<myStableID>, so it stands out.
@@ -186,7 +186,7 @@ struct RoomView: View {
                 }
                 .padding(.horizontal, 6)
             }
-            Text(Self.roomAttributed(text: m.text, names: ble.names))
+            Text(Self.roomAttributed(text: Moderation.clean(m.text), names: ble.names))
                 .font(.system(size: 15))
                 .foregroundStyle(m.mine ? .white : Theme.text(scheme))
                 .tint(m.mine ? .white : Theme.accent)
@@ -233,6 +233,21 @@ struct RoomView: View {
             } label: {
                 Label(L("Mention"), systemImage: "at")
             }
+        }
+        Divider()
+        if !m.mine {
+            Button(role: .destructive) {
+                ble.reportRoom(m)
+            } label: { Label(L("Report"), systemImage: "flag") }
+            Button(role: .destructive) {
+                ble.block(m.peerID)
+            } label: { Label(L("Block user"), systemImage: "hand.raised") }
+        }
+        Button(role: .destructive) {
+            ble.hideRoomMessage(m)
+        } label: {
+            Label(m.mine ? L("Delete") : L("Remove from room"),
+                  systemImage: "trash")
         }
     }
 }

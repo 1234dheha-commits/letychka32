@@ -25,6 +25,8 @@ struct RootView: View {
     @AppStorage("appleUserName") private var appleUserName = ""
     @State private var signInError: String?
     @State private var showDeleteAccountConfirm = false
+    @AppStorage("eulaAccepted") private var eulaAccepted = false
+    @State private var showTerms = false
 
     var body: some View {
         Group {
@@ -65,6 +67,11 @@ struct RootView: View {
         }
         .onChange(of: ble.pendingOpenPeer) { _, v in
             if v != nil { openPending() }
+        }
+        .fullScreenCover(isPresented: Binding(
+            get: { !eulaAccepted },
+            set: { shown in if !shown { eulaAccepted = true } })) {
+            EULAGateView { eulaAccepted = true }
         }
     }
 
@@ -326,6 +333,34 @@ struct RootView: View {
                         }
                     }
                 }
+                Section(L("Safety")) {
+                    Text(L("Zero tolerance: objectionable content and abusive users are not allowed on Letychka."))
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.muted(scheme))
+                    Text(L("Report any message by holding it and tapping Report. Reports are acted on within 24 hours and offending users are blocked."))
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.muted(scheme))
+                    Button { showTerms = true } label: {
+                        HStack {
+                            Image(systemName: "doc.text")
+                                .foregroundStyle(Theme.accent)
+                            Text(L("Terms of Use"))
+                                .foregroundStyle(Theme.text(scheme))
+                        }
+                    }
+                    Link(destination: URL(string: "mailto:\(SafetyText.reportEmail)")!) {
+                        HStack {
+                            Image(systemName: "envelope")
+                                .foregroundStyle(Theme.accent)
+                            Text(L("Report a problem"))
+                                .foregroundStyle(Theme.text(scheme))
+                            Spacer()
+                            Text(SafetyText.reportEmail)
+                                .font(.system(size: 11))
+                                .foregroundStyle(Theme.muted(scheme))
+                        }
+                    }
+                }
                 Section(L("Privacy")) {
                     if !hideHints {
                         Text(L("Letychka has no account and no sign in. There is nothing to log out of: nothing about you is sent to any server. Your name, avatar and chats are stored only on this phone. Use the button below to wipe all of it."))
@@ -390,6 +425,7 @@ struct RootView: View {
             } message: {
                 Text(L("Removes your name, avatar and all chats from this phone. This cannot be undone."))
             }
+            .sheet(isPresented: $showTerms) { TermsView() }
         }
     }
 

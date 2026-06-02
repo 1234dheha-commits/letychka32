@@ -152,6 +152,12 @@ final class BLEMessenger: NSObject, ObservableObject {
     /// peerID -> highest wireID of OUR messages they have seen (read receipt).
     @Published var seenUpTo: [String: UInt32] = [:]
 
+    /// wireIDs of Room posts this user hid or reported. Persisted; such posts
+    /// are dropped on arrival so they never come back into the feed.
+    @Published var hiddenRoom: Set<UInt32> =
+        Set((UserDefaults.standard.array(forKey: "hiddenRoom") as? [Int] ?? [])
+            .map { UInt32(truncatingIfNeeded: $0) })
+
     func isMuted(_ peerID: String) -> Bool { muted.contains(peerID) }
     func toggleMute(_ peerID: String) {
         if muted.contains(peerID) { muted.remove(peerID) }
@@ -286,6 +292,8 @@ final class BLEMessenger: NSObject, ObservableObject {
 
     private func appendRoom(_ m: ChatMessage) {
         DispatchQueue.main.async {
+            if self.blocked.contains(m.peerID) { return }
+            if m.wireID != 0, self.hiddenRoom.contains(m.wireID) { return }
             self.roomMessages.append(m)
             if self.roomMessages.count > 500 {
                 self.roomMessages.removeFirst(self.roomMessages.count - 500)
@@ -305,10 +313,32 @@ final class BLEMessenger: NSObject, ObservableObject {
         peers.removeAll { $0.id == peerID }
         discovered[peerID] = nil
         connected[peerID] = nil
+        // Eject the blocked person's posts from the Room immediately.
+        roomMessages.removeAll { $0.peerID == peerID }
+        persistRoom()
     }
     func unblock(_ peerID: String) {
         blocked.remove(peerID)
         UserDefaults.standard.set(Array(blocked), forKey: "blocked")
+    }
+
+    /// Remove one Room post from this device's feed and remember it so it is
+    /// not shown again if it is rebroadcast. ("Immediately remove from feed".)
+    func hideRoomMessage(_ m: ChatMessage) {
+        if m.wireID != 0 {
+            hiddenRoom.insert(m.wireID)
+            UserDefaults.standard.set(hiddenRoom.map { Int($0) },
+                                      forKey: "hiddenRoom")
+        }
+        roomMessages.removeAll { $0.id == m.id }
+        persistRoom()
+    }
+
+    /// Report objectionable Room content: hide the post and block (eject) its
+    /// author so nothing else from them reaches this user.
+    func reportRoom(_ m: ChatMessage) {
+        hideRoomMessage(m)
+        if !m.mine { block(m.peerID) }
     }
 
     /// Send a frame to every reachable peer (used for live profile updates).
@@ -547,6 +577,8 @@ final class BLEMessenger: NSObject, ObservableObject {
         blocked.removeAll()
         UserDefaults.standard.removeObject(forKey: "blocked")
         roomMessages.removeAll()
+        hiddenRoom.removeAll()
+        UserDefaults.standard.removeObject(forKey: "hiddenRoom")
         roomUnread = 0
         avatars.removeAll()
         myAvatarBlob = nil

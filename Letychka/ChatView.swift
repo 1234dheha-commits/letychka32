@@ -145,6 +145,12 @@ struct ChatView: View {
                     } label: {
                         Label(L("Delete chat"), systemImage: "trash")
                     }
+                    Button(role: .destructive) {
+                        ble.block(peer.id)
+                        dismiss()
+                    } label: {
+                        Label(L("Report"), systemImage: "flag")
+                    }
                     if ble.isBlocked(peer.id) {
                         Button { ble.unblock(peer.id) } label: {
                             Label(L("Unblock"), systemImage: "hand.raised.slash")
