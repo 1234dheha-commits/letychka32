@@ -10,6 +10,7 @@ struct RoomView: View {
     @Environment(\.colorScheme) private var scheme
     @State private var draft = ""
     @State private var replyingTo: ChatMessage?
+    @State private var showTerms = false
     private let emojis = ["👍", "❤️", "😂", "🔥", "😮", "😢"]
 
     private func nickOf(_ m: ChatMessage) -> String {
@@ -70,6 +71,7 @@ struct RoomView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            roomSafetyBar
             if ble.roomMessages.isEmpty {
                 emptyState
             } else {
@@ -135,8 +137,39 @@ struct RoomView: View {
             .padding(12)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .navigationTitle(L("Room"))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { showTerms = true } label: {
+                    Image(systemName: "shield.lefthalf.filled")
+                        .foregroundStyle(Theme.accent)
+                }
+            }
+        }
+        .sheet(isPresented: $showTerms) { TermsView() }
         .onAppear { ble.openRoom() }
         .onDisappear { ble.closeRoom() }
+    }
+
+    /// Always-visible safety strip at the top of the Room: keeps the rules and
+    /// the report/block affordance discoverable even when the feed is empty.
+    private var roomSafetyBar: some View {
+        Button { showTerms = true } label: {
+            HStack(spacing: 7) {
+                Image(systemName: "shield.lefthalf.filled")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(Theme.accent)
+                Text(L("Everyone nearby sees these posts. Hold a message to Report or Block. Tap for rules."))
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Theme.muted(scheme))
+                    .lineLimit(2)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 14).padding(.vertical, 8)
+            .background(Theme.accent.opacity(0.10))
+        }
+        .buttonStyle(.plain)
     }
 
     private var emptyState: some View {

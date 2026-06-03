@@ -74,10 +74,35 @@ final class BLEMessenger: NSObject, ObservableObject {
     var badgeCount: Int { unreadTotal + roomUnread }
 
     func openRoom() {
+        seedRoomIfNeeded()
         roomActive = true
         if roomUnread != 0 { roomUnread = 0; refreshBadge() }
     }
     func closeRoom() { roomActive = false }
+
+    /// Seed the shared Room once with a few example posts so the moderation
+    /// tools (Report / Block / Remove) are visible and testable even before any
+    /// real Bluetooth peer is around. Each sample has its own sender id, so
+    /// Block works on it exactly like a real user. The user (or an App Review
+    /// tester) can also post here and see offensive words auto-masked.
+    func seedRoomIfNeeded() {
+        guard !UserDefaults.standard.bool(forKey: "roomSeeded") else { return }
+        UserDefaults.standard.set(true, forKey: "roomSeeded")
+        let samples: [(id: String, nick: String, text: String)] = [
+            ("0a1b2c3d", "Letychka",
+             "Welcome to the Room. Everyone near you over Bluetooth can see what is posted here."),
+            ("1b2c3d4e", "Community",
+             "Be respectful. Objectionable content and abusive users are not tolerated here."),
+            ("2c3d4e5f", "How to report",
+             "Press and hold any message to Report it, Block the sender, or Remove it from your feed.")
+        ]
+        for s in samples {
+            names[s.id] = s.nick
+            roomMessages.append(ChatMessage(peerID: s.id, mine: false,
+                                            text: s.text, date: Date()))
+        }
+        persistRoom()
+    }
 
     func isTyping(_ peerID: String) -> Bool {
         guard let t = typing[peerID] else { return false }

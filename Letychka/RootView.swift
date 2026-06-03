@@ -27,6 +27,7 @@ struct RootView: View {
     @State private var showDeleteAccountConfirm = false
     @AppStorage("eulaAccepted") private var eulaAccepted = false
     @State private var showTerms = false
+    @State private var showEULA = false
 
     var body: some View {
         Group {
@@ -39,6 +40,7 @@ struct RootView: View {
         }
         .tint(Theme.accent)
         .onAppear {
+            showEULA = !eulaAccepted
             nickField = ble.nick
             avatar = AvatarStore.load()
             if UserDefaults.standard.object(forKey: "firstLaunch") == nil {
@@ -68,10 +70,8 @@ struct RootView: View {
         .onChange(of: ble.pendingOpenPeer) { _, v in
             if v != nil { openPending() }
         }
-        .fullScreenCover(isPresented: Binding(
-            get: { !eulaAccepted },
-            set: { shown in if !shown { eulaAccepted = true } })) {
-            EULAGateView { eulaAccepted = true }
+        .fullScreenCover(isPresented: $showEULA) {
+            EULAGateView { eulaAccepted = true; showEULA = false }
         }
     }
 
