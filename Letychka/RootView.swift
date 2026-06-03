@@ -49,6 +49,9 @@ struct RootView: View {
             ble.start()
             ble.setMyAvatar(Self.tinyAvatar(avatar))
             openPending()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                ble.seedDemoIfNeeded()
+            }
         }
         .onChange(of: tab) { old, _ in
             if old == 3 { ble.setNick(nickField) }

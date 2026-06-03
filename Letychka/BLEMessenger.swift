@@ -74,7 +74,7 @@ final class BLEMessenger: NSObject, ObservableObject {
     var badgeCount: Int { unreadTotal + roomUnread }
 
     func openRoom() {
-        seedRoomIfNeeded()
+        seedDemoIfNeeded()
         roomActive = true
         if roomUnread != 0 { roomUnread = 0; refreshBadge() }
     }
@@ -85,23 +85,33 @@ final class BLEMessenger: NSObject, ObservableObject {
     /// real Bluetooth peer is around. Each sample has its own sender id, so
     /// Block works on it exactly like a real user. The user (or an App Review
     /// tester) can also post here and see offensive words auto-masked.
-    func seedRoomIfNeeded() {
-        guard !UserDefaults.standard.bool(forKey: "roomSeeded") else { return }
-        UserDefaults.standard.set(true, forKey: "roomSeeded")
-        let samples: [(id: String, nick: String, text: String)] = [
-            ("0a1b2c3d", "Letychka",
-             "Welcome to the Room. Everyone near you over Bluetooth can see what is posted here."),
-            ("1b2c3d4e", "Community",
-             "Be respectful. Objectionable content and abusive users are not tolerated here."),
-            ("2c3d4e5f", "How to report",
-             "Press and hold any message to Report it, Block the sender, or Remove it from your feed.")
+    func seedDemoIfNeeded() {
+        guard !UserDefaults.standard.bool(forKey: "demoSeeded3") else { return }
+        UserDefaults.standard.set(true, forKey: "demoSeeded3")
+        // Example Room posts so the moderation tools are visible and testable on
+        // a single device (App Review has no second phone). They read like normal
+        // nearby chatter, not system messages.
+        let room: [(String, String, String)] = [
+            ("0a1b2c3d", "Sasha", L("Hi everyone nearby! Anyone around?")),
+            ("1b2c3d4e", "Max", L("Hold a message to report it, block the sender, or remove it from the room.")),
+            ("2c3d4e5f", "Kim", L("This room is shared with everyone in Bluetooth range. Please be kind."))
         ]
-        for s in samples {
-            names[s.id] = s.nick
-            roomMessages.append(ChatMessage(peerID: s.id, mine: false,
-                                            text: s.text, date: Date()))
+        for r in room {
+            names[r.0] = r.1
+            roomMessages.append(ChatMessage(peerID: r.0, mine: false, text: r.2, date: Date()))
         }
         persistRoom()
+        // An example direct chat so block / report / mute / delete are all testable
+        // from one device, with no second phone nearby.
+        let demo = "9f0e1d2c"
+        names[demo] = L("Alex (example)")
+        messages.append(ChatMessage(peerID: demo, mine: false,
+            text: L("Hi! This is an example chat. Use the menu at the top right to report or block, and hold a message to delete it."),
+            date: Date().addingTimeInterval(-120)))
+        messages.append(ChatMessage(peerID: demo, mine: true,
+            text: L("Try the report and block controls here."),
+            date: Date().addingTimeInterval(-60)))
+        persist()
     }
 
     func isTyping(_ peerID: String) -> Bool {
@@ -182,6 +192,15 @@ final class BLEMessenger: NSObject, ObservableObject {
     @Published var hiddenRoom: Set<UInt32> =
         Set((UserDefaults.standard.array(forKey: "hiddenRoom") as? [Int] ?? [])
             .map { UInt32(truncatingIfNeeded: $0) })
+
+    /// Mute Room notifications (unread still counts, just no banner/sound).
+    @Published var roomMuted = UserDefaults.standard.bool(forKey: "roomMuted")
+    func toggleRoomMute() {
+        roomMuted.toggle()
+        UserDefaults.standard.set(roomMuted, forKey: "roomMuted")
+    }
+    /// Clear the Room feed on this device.
+    func clearRoom() { roomMessages.removeAll(); persistRoom() }
 
     func isMuted(_ peerID: String) -> Bool { muted.contains(peerID) }
     func toggleMute(_ peerID: String) {
@@ -327,7 +346,7 @@ final class BLEMessenger: NSObject, ObservableObject {
             guard !m.mine, !self.roomActive else { return }
             self.roomUnread += 1
             UNUserNotificationCenter.current().setBadgeCount(self.badgeCount)
-            self.notify(m, room: true)
+            if !self.roomMuted { self.notify(m, room: true) }
         }
     }
 

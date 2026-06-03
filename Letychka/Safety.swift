@@ -5,7 +5,7 @@ import SwiftUI
 /// and any time from Settings > Terms of Use.
 enum SafetyText {
     static let reportEmail = "support@anonimniyov.xyz"
-    static let reportTelegram = "https://t.me/figurels"
+    static let reportTelegram = "https://t.me/LetychkaReportbot"
 
     /// The agreement / community rules. Must state zero tolerance for
     /// objectionable content and abusive users.

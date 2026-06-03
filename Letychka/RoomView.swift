@@ -141,8 +141,19 @@ struct RoomView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button { showTerms = true } label: {
-                    Image(systemName: "shield.lefthalf.filled")
+                Menu {
+                    Button { showTerms = true } label: {
+                        Label(L("Rules and contact"), systemImage: "shield.lefthalf.filled")
+                    }
+                    Button { ble.toggleRoomMute() } label: {
+                        Label(ble.roomMuted ? L("Unmute room") : L("Mute room"),
+                              systemImage: ble.roomMuted ? "bell" : "bell.slash")
+                    }
+                    Button(role: .destructive) { ble.clearRoom() } label: {
+                        Label(L("Clear room"), systemImage: "trash")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
                         .foregroundStyle(Theme.accent)
                 }
             }
