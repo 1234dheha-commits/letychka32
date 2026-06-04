@@ -88,6 +88,23 @@ final class BLEMessenger: NSObject, ObservableObject {
     /// Stable id of the built-in example person. Kept on the radar (exempt from
     /// pruning) so App Review can open the pre-chat consent screen on one device.
     static let demoPeerID = "9f0e1d2c"
+    /// Every id used by the seeded example content: the radar peer / DM and the
+    /// three example Room senders. Used to wipe the demo once real activity starts.
+    static let demoIDs: Set<String> = ["9f0e1d2c", "0a1b2c3d", "1b2c3d4e", "2c3d4e5f"]
+
+    /// Erase all example content the moment the user meets a real person, so live
+    /// users are never left with the placeholder peer or messages. Runs once.
+    /// App Review (no real peers nearby) keeps the demo and can still test it.
+    func clearDemoIfNeeded() {
+        guard !UserDefaults.standard.bool(forKey: "demoCleared") else { return }
+        UserDefaults.standard.set(true, forKey: "demoCleared")
+        peers.removeAll { $0.id == Self.demoPeerID }
+        roomMessages.removeAll { Self.demoIDs.contains($0.peerID) }
+        messages.removeAll { Self.demoIDs.contains($0.peerID) }
+        for id in Self.demoIDs { names[id] = nil }
+        persist()
+        persistRoom()
+    }
 
     func seedDemoIfNeeded() {
         guard !UserDefaults.standard.bool(forKey: "demoSeeded3") else { return }
@@ -1182,6 +1199,8 @@ final class BLEMessenger: NSObject, ObservableObject {
     private func upsertPeer(id: String, nick: String, rssi: Int) {
         DispatchQueue.main.async {
             if self.blocked.contains(id) { return }
+            // A real person showed up: clear the seeded example content for good.
+            if id != Self.demoPeerID { self.clearDemoIfNeeded() }
             if !nick.isEmpty { self.names[id] = nick }
             if let i = self.peers.firstIndex(where: { $0.id == id }) {
                 // Exponential smoothing so the radar blip glides instead of
