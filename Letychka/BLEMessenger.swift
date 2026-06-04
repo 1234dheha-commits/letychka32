@@ -85,6 +85,10 @@ final class BLEMessenger: NSObject, ObservableObject {
     /// real Bluetooth peer is around. Each sample has its own sender id, so
     /// Block works on it exactly like a real user. The user (or an App Review
     /// tester) can also post here and see offensive words auto-masked.
+    /// Stable id of the built-in example person. Kept on the radar (exempt from
+    /// pruning) so App Review can open the pre-chat consent screen on one device.
+    static let demoPeerID = "9f0e1d2c"
+
     func seedDemoIfNeeded() {
         guard !UserDefaults.standard.bool(forKey: "demoSeeded3") else { return }
         UserDefaults.standard.set(true, forKey: "demoSeeded3")
@@ -103,8 +107,14 @@ final class BLEMessenger: NSObject, ObservableObject {
         persistRoom()
         // An example direct chat so block / report / mute / delete are all testable
         // from one device, with no second phone nearby.
-        let demo = "9f0e1d2c"
+        let demo = Self.demoPeerID
         names[demo] = L("Alex (example)")
+        // Put the example person on the radar so the pre-chat consent screen
+        // (identity + accept / decline) can be reviewed on a single device.
+        if !peers.contains(where: { $0.id == demo }) {
+            peers.append(Peer(id: demo, nick: L("Alex (example)"),
+                              rssi: -52, lastSeen: Date()))
+        }
         messages.append(ChatMessage(peerID: demo, mine: false,
             text: L("Hi! This is an example chat. Use the menu at the top right to report or block, and hold a message to delete it."),
             date: Date().addingTimeInterval(-120)))
@@ -422,7 +432,7 @@ final class BLEMessenger: NSObject, ObservableObject {
                 // couple of seconds, so 7s with no sighting means it is gone.
                 let cutoff = Date().addingTimeInterval(-7)
                 let before = self.peers.count
-                self.peers.removeAll { $0.lastSeen < cutoff }
+                self.peers.removeAll { $0.lastSeen < cutoff && $0.id != Self.demoPeerID }
                 if self.peers.count != before {
                     self.discovered = self.discovered.filter { k, _ in
                         self.peers.contains { $0.id == k }
@@ -554,7 +564,7 @@ final class BLEMessenger: NSObject, ObservableObject {
             inflightSince[pid] = nil
         }
         let cutoff = Date().addingTimeInterval(-7)
-        peers.removeAll { $0.lastSeen < cutoff }
+        peers.removeAll { $0.lastSeen < cutoff && $0.id != Self.demoPeerID }
         for k in sendQueues.keys { pump(k) }
     }
 
@@ -1196,7 +1206,7 @@ final class BLEMessenger: NSObject, ObservableObject {
             }
             // Drop peers not seen recently (also handled by the prune timer).
             let cutoff = Date().addingTimeInterval(-9)
-            self.peers.removeAll { $0.lastSeen < cutoff }
+            self.peers.removeAll { $0.lastSeen < cutoff && $0.id != Self.demoPeerID }
         }
     }
 

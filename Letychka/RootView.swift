@@ -18,6 +18,7 @@ struct RootView: View {
     @State private var bypassBT = false
     @State private var tab = 0
     @State private var radarPeer: Peer?
+    @State private var introPeer: Peer?
     @State private var chatsPeer: Peer?
     @State private var showRoom = false
     @State private var showClearConfirm = false
@@ -125,7 +126,7 @@ struct RootView: View {
                             .padding(.top, 6)
                     }
                     if !airdropHintDismissed { airDropBanner }
-                    RadarView(ble: ble) { radarPeer = $0 }
+                    RadarView(ble: ble) { introPeer = $0 }
                         .padding(20)
                     if !hideHints { footer }
                 }
@@ -134,6 +135,16 @@ struct RootView: View {
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(item: $radarPeer) { p in
                 ChatView(ble: ble, peer: p)
+            }
+            // Guideline 1.2: show who you are about to connect with and let the
+            // user accept, decline or skip BEFORE the one to one chat opens.
+            .sheet(item: $introPeer) { p in
+                PeerIntroView(ble: ble, peer: p, onStart: {
+                    introPeer = nil
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        radarPeer = p
+                    }
+                }, onCancel: { introPeer = nil })
             }
         }
     }
