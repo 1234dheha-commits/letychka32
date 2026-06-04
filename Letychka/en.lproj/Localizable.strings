@@ -34,7 +34,7 @@
 "Looking for people nearby" = "Looking for people nearby";
 "%d nearby, tap to chat" = "%d nearby, tap to chat";
 "Turn on Bluetooth to find people nearby" = "Turn on Bluetooth to find people nearby";
-"Anonymous. No internet, no servers, no accounts. Works only with people near you." = "Anonymous. No internet, no servers, no accounts. Works only with people near you.";
+"Anonymous. No internet, no servers, no accounts. Works only with people near you." = "Private. No internet, no servers, no accounts. Works only with people you choose near you.";
 "On Letychka since %@" = "On Letychka since %@";
 "Bluetooth is off" = "Bluetooth is off";
 "Bluetooth access needed" = "Bluetooth access needed";
@@ -53,7 +53,7 @@
 "Sign out" = "Sign out";
 "Delete account" = "Delete account";
 "Delete account and all local data? This removes your Apple sign-in, your name, avatar and chats from this phone. It cannot be undone." = "Delete account and all local data? This removes your Apple sign-in, your name, avatar and chats from this phone. It cannot be undone.";
-"Sign in with Apple is optional. Letychka works fully without it and stays anonymous over Bluetooth. Signing in just lets you have an account you can delete." = "Sign in with Apple is optional. Letychka works fully without it and stays anonymous over Bluetooth. Signing in just lets you have an account you can delete.";
+"Sign in with Apple is optional. Letychka works fully without it and stays anonymous over Bluetooth. Signing in just lets you have an account you can delete." = "Sign in with Apple is optional. Letychka works fully without it, with no account needed, over Bluetooth. Signing in just lets you have an account you can delete.";
 "Your name" = "Your name";
 "Anon" = "Anon";
 "Nearby" = "Nearby";
@@ -76,7 +76,7 @@
 "Privacy" = "Privacy";
 "Letychka has no account and no sign in. There is nothing to log out of: nothing about you is sent to any server. Your name, avatar and chats are stored only on this phone. Use the button below to wipe all of it." = "Letychka has no account and no sign in. There is nothing to log out of: nothing about you is sent to any server. Your name, avatar and chats are stored only on this phone. Use the button below to wipe all of it.";
 "Clear everything on this phone" = "Clear everything on this phone";
-"Letychka finds people near you over Bluetooth and lets you message them directly, with no internet and no servers. It stays anonymous and everything is kept only on your phone." = "Letychka finds people near you over Bluetooth and lets you message them directly, with no internet and no servers. It stays anonymous and everything is kept only on your phone.";
+"Letychka finds people near you over Bluetooth and lets you message them directly, with no internet and no servers. It stays anonymous and everything is kept only on your phone." = "Letychka finds people near you over Bluetooth and lets you message the ones you choose, with no internet and no servers. No account is needed and everything is kept only on your phone.";
 "Clear everything?" = "Clear everything?";
 "Removes your name, avatar and all chats from this phone. This cannot be undone." = "Removes your name, avatar and all chats from this phone. This cannot be undone.";
 "Receiving media %d%%" = "Receiving media %d%%";
